@@ -64,6 +64,7 @@ const baseConfig = {
 const devConfig = {
     mode: 'development',
     devServer: {
+        host: '0.0.0.0',
         static: path.join(__dirname, 'dist'),
         compress: true,
         port: 9000,
