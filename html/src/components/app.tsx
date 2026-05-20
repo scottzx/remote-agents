@@ -28,7 +28,6 @@ const flowControl = {
     lowWater: 4,
 } as FlowControl;
 
-// High-fidelity terminal theme options
 const lightTermTheme = {
     foreground: '#1f2328',
     background: '#fafafa',
@@ -53,7 +52,7 @@ const lightTermTheme = {
 
 const darkTermTheme = {
     foreground: '#d2d2d2',
-    background: '#0d1117', // Soft dark palette matching modern SaaS dark-mode
+    background: '#0d1117',
     cursor: '#adadad',
     black: '#000000',
     red: '#d81e00',
@@ -79,10 +78,93 @@ const baseTermOptions = {
     allowProposedApi: true,
 } as ITerminalOptions;
 
+interface WorkspaceFolder {
+    id: string;
+    name: string;
+    expanded: boolean;
+    children: Array<{
+        id: string;
+        title: string;
+        time: string;
+        active?: boolean;
+    }>;
+}
+
+interface ProjectFile {
+    path: string;
+    name: string;
+    size: string;
+    type: 'file' | 'folder';
+    indent: number;
+    content: string;
+}
+
+// Built-in actual project source files for dynamic and highly responsive frontend previews
+const projectFiles: ProjectFile[] = [
+    {
+        path: 'README.md',
+        name: 'README.md',
+        size: '5.4 KB',
+        type: 'file',
+        indent: 0,
+        content:
+            '# ttyd - Share your terminal over the web\n\nttyd is a simple command-line tool for sharing terminal over the web.\n\n## Features\n- Built on top of libuv and WebGL2 for speed\n- Fully-featured terminal with CJK and IME support\n- ZMODEM / trzsz file transfer support\n- Sixel image output support\n- SSL support based on OpenSSL / Mbed TLS\n- Run any custom command with options',
+    },
+    {
+        path: 'package.json',
+        name: 'package.json',
+        size: '2.1 KB',
+        type: 'file',
+        indent: 0,
+        content:
+            '{\n  "private": true,\n  "name": "ttyd",\n  "version": "1.0.0",\n  "description": "Share your terminal over the web",\n  "scripts": {\n    "start": "webpack serve",\n    "build": "webpack && gulp",\n    "fix": "gts fix"\n  },\n  "dependencies": {\n    "@xterm/xterm": "^5.5.0",\n    "preact": "^10.19.6",\n    "trzsz": "^1.1.5"\n  }\n}',
+    },
+    {
+        path: 'CMakeLists.txt',
+        name: 'CMakeLists.txt',
+        size: '4.4 KB',
+        type: 'file',
+        indent: 0,
+        content:
+            'cmake_minimum_required(VERSION 3.10)\nproject(ttyd C)\n\nset(CMAKE_C_STANDARD 99)\nset(CMAKE_C_STANDARD_REQUIRED ON)\n\nfind_package(Libwebsockets REQUIRED)\nfind_package(Libuv REQUIRED)\nfind_package(OpenSSL REQUIRED)\n\nadd_executable(ttyd src/main.c src/utils.c)\ntarget_link_libraries(ttyd Libwebsockets::websockets Libuv::uv OpenSSL::SSL)',
+    },
+    {
+        path: 'html/src/components',
+        name: 'html/src/components',
+        size: '',
+        type: 'folder',
+        indent: 0,
+        content: '',
+    },
+    {
+        path: 'html/src/components/app.tsx',
+        name: 'app.tsx',
+        size: '25.9 KB',
+        type: 'file',
+        indent: 1,
+        content:
+            'import { h, Component } from \'preact\';\nimport { Terminal } from \'./terminal\';\n\nexport class App extends Component {\n    render() {\n        return (\n            <div class="app-container">\n                <header class="global-header">...</header>\n                <main class="workspace-body">...</main>\n            </div>\n        );\n    }\n}',
+    },
+    {
+        path: 'html/src/style/index.scss',
+        name: 'index.scss',
+        size: '8.2 KB',
+        type: 'file',
+        indent: 1,
+        content:
+            'html, body {\n  height: 100%;\n  margin: 0;\n  overflow: hidden;\n}\n\n.app-container {\n  display: flex;\n  flex-direction: column;\n  height: 100vh;\n}',
+    },
+];
+
 interface AppState {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders' | 'settings';
+    rightPanelTab: 'files' | 'tasks';
     theme: 'light' | 'dark';
     hostname: string;
+    leftSidebarOpen: boolean;
+    rightSidebarOpen: boolean;
+    folders: WorkspaceFolder[];
+    selectedFile: ProjectFile | null;
 }
 
 export class App extends Component<{}, AppState> {
@@ -90,8 +172,50 @@ export class App extends Component<{}, AppState> {
         super();
         this.state = {
             activeTab: 'terminal',
-            theme: 'light', // Default to light mode to present reference image styles beautifully
+            rightPanelTab: 'files',
+            theme: 'light',
             hostname: 'Ashley Walker',
+            leftSidebarOpen: true,
+            rightSidebarOpen: true,
+            selectedFile: projectFiles[0], // Pre-select README.md by default
+            folders: [
+                {
+                    id: 'remote-agents',
+                    name: 'remote-agents',
+                    expanded: true,
+                    children: [
+                        { id: 'f-custom', title: 'Frontend Customization G...', time: '2m', active: false },
+                        { id: 'a-terminal', title: 'Analyzing Web Terminal...', time: '11m', active: true },
+                    ],
+                },
+                {
+                    id: 'bee-write-back',
+                    name: 'bee-write-back',
+                    expanded: false,
+                    children: [{ id: 'a-bee', title: 'Analyzing Bee Write Back', time: '3h' }],
+                },
+                {
+                    id: 'cc-connect',
+                    name: 'cc-connect',
+                    expanded: false,
+                    children: [{ id: 'a-cc', title: '帮我分析一下这个项目。理...', time: '4h' }],
+                },
+                {
+                    id: 'html-slides',
+                    name: 'html-slides',
+                    expanded: false,
+                    children: [
+                        { id: 'a-slide-1', title: 'Designing Agent Collabor...', time: '18h' },
+                        { id: 'a-slide-2', title: 'Designing Agent Collabor...', time: '18h' },
+                    ],
+                },
+                {
+                    id: 'html-anything',
+                    name: 'html-anything',
+                    expanded: false,
+                    children: [{ id: 'a-anything', title: 'Querying LLM Usage', time: '1d' }],
+                },
+            ],
         };
     }
 
@@ -100,8 +224,6 @@ export class App extends Component<{}, AppState> {
         const theme = savedTheme || 'light';
         this.setState({ theme });
         document.documentElement.setAttribute('data-theme', theme);
-
-        // Fetch local host details or context title
         this.setState({ hostname: window.location.hostname || 'Ashley Walker' });
     }
 
@@ -110,30 +232,104 @@ export class App extends Component<{}, AppState> {
         this.setState({ theme: newTheme });
         document.documentElement.setAttribute('data-theme', newTheme);
         localStorage.setItem('remote-agents-theme', newTheme);
+        this.triggerTerminalFit();
+    };
 
-        // Dynamically trigger resize/fit inside xterm
+    triggerTerminalFit = () => {
         setTimeout(() => {
             if (window.term && window.term.fit) {
                 window.term.fit();
             }
-        }, 100);
+        }, 150);
     };
 
     setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'settings') => {
         this.setState({ activeTab: tab });
-
-        // If switching back to terminal, trigger fit
         if (tab === 'terminal') {
-            setTimeout(() => {
-                if (window.term && window.term.fit) {
-                    window.term.fit();
-                }
-            }, 50);
+            this.triggerTerminalFit();
         }
     };
 
+    setRightPanelTab = (tab: 'files' | 'tasks') => {
+        this.setState({ rightPanelTab: tab });
+    };
+
+    toggleLeftSidebar = () => {
+        this.setState({ leftSidebarOpen: !this.state.leftSidebarOpen });
+        this.triggerTerminalFit();
+    };
+
+    toggleRightSidebar = () => {
+        this.setState({ rightSidebarOpen: !this.state.rightSidebarOpen });
+        this.triggerTerminalFit();
+    };
+
+    toggleFolder = (folderId: string) => {
+        this.setState({
+            folders: this.state.folders.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f)),
+        });
+    };
+
+    selectFile = (file: ProjectFile) => {
+        if (file.type === 'file') {
+            this.setState({ selectedFile: file });
+        }
+    };
+
+    // Sophisticated JSX-based token parser for syntax-highlighting files inside dynamic previews
+    renderHighlightedCode(content: string) {
+        const lines = content.split('\n');
+        return lines.map((line, idx) => {
+            const renderedText: Array<h.JSX.Element | string> = [];
+
+            // Standard light regex-based tokenization for presentation styling
+            const parts = line.split(/(\s+)/);
+            parts.forEach((part, pIdx) => {
+                if (
+                    /^(import|export|class|const|return|function|public|private|type|interface|void|async|await|let|var|set)$/.test(
+                        part
+                    )
+                ) {
+                    renderedText.push(
+                        <span key={pIdx} class="kw">
+                            {part}
+                        </span>
+                    );
+                } else if (/^("[^"]*"|'[^']*'|`[^`]*`)$/.test(part)) {
+                    renderedText.push(
+                        <span key={pIdx} class="str">
+                            {part}
+                        </span>
+                    );
+                } else if (/^\/\/.*$/.test(part) || /^\/\*.*$/.test(part) || /^#.*$/.test(part)) {
+                    renderedText.push(
+                        <span key={pIdx} class="cm">
+                            {part}
+                        </span>
+                    );
+                } else if (/^(<[^>]+>)$/.test(part)) {
+                    renderedText.push(
+                        <span key={pIdx} class="tag">
+                            {part}
+                        </span>
+                    );
+                } else {
+                    renderedText.push(part);
+                }
+            });
+
+            return (
+                <div key={idx} class="code-line">
+                    <span class="line-number">{idx + 1}</span>
+                    <span class="line-text">{renderedText}</span>
+                </div>
+            );
+        });
+    }
+
     render() {
-        const { activeTab, theme, hostname } = this.state;
+        const { activeTab, rightPanelTab, theme, hostname, leftSidebarOpen, rightSidebarOpen, folders, selectedFile } =
+            this.state;
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
         const termOptions = {
             ...baseTermOptions,
@@ -165,8 +361,8 @@ export class App extends Component<{}, AppState> {
                         <div class="badge-ops">
                             <div class="pulse-dot" />
                             <svg
-                                width="12"
-                                height="12"
+                                width="10"
+                                height="10"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -280,8 +476,8 @@ export class App extends Component<{}, AppState> {
                         >
                             {theme === 'light' ? (
                                 <svg
-                                    width="16"
-                                    height="16"
+                                    width="14"
+                                    height="14"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
@@ -293,8 +489,8 @@ export class App extends Component<{}, AppState> {
                                 </svg>
                             ) : (
                                 <svg
-                                    width="16"
-                                    height="16"
+                                    width="14"
+                                    height="14"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
@@ -309,8 +505,8 @@ export class App extends Component<{}, AppState> {
                         </button>
                         <button class="btn-primary">
                             <svg
-                                width="14"
-                                height="14"
+                                width="12"
+                                height="12"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -324,8 +520,8 @@ export class App extends Component<{}, AppState> {
                         </button>
                         <div class="more-options-btn">
                             <svg
-                                width="18"
-                                height="18"
+                                width="16"
+                                height="16"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -344,14 +540,177 @@ export class App extends Component<{}, AppState> {
                     </div>
                 </header>
 
-                {/* 2. Page Content Switcher */}
-                {activeTab === 'terminal' && (
-                    <div style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
-                        {/* Terminal Control Toolbar */}
+                {/* 3. Three-Column Grid Workspace Area */}
+                <div class="workspace-body">
+                    {/* [COLUMN 1]: LEFT Side workspaces Tree sidebar */}
+                    <aside class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}>
+                        <div class="sidebar-header">
+                            <button class="new-conv-btn">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M5 12h14M12 5v14" />
+                                </svg>
+                                <span>新建会话</span>
+                            </button>
+                            <div class="history-title-container">
+                                <span>历史会话</span>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polyline points="12 6 12 12 16 14" />
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div class="sidebar-scroll">
+                            <div class="workspace-section">
+                                <div class="section-header">
+                                    <span>工作空间 Workspaces</span>
+                                    <div class="header-actions">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="M3 16h10M3 12h18M3 8h18" />
+                                        </svg>
+                                    </div>
+                                </div>
+
+                                {folders.map(folder => (
+                                    <div key={folder.id} class="project-node">
+                                        <div
+                                            class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
+                                            onClick={() => this.toggleFolder(folder.id)}
+                                        >
+                                            <svg
+                                                class="chevron"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="9 18 15 12 9 6" />
+                                            </svg>
+                                            <svg
+                                                class="folder-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                            </svg>
+                                            <span>{folder.name}</span>
+                                        </div>
+
+                                        {folder.expanded && (
+                                            <div class="project-children">
+                                                {folder.children.map(child => (
+                                                    <div
+                                                        key={child.id}
+                                                        class={`chat-item ${child.active ? 'active' : ''}`}
+                                                    >
+                                                        <span class="chat-title" title={child.title}>
+                                                            {child.title}
+                                                        </span>
+                                                        <span class="chat-time">{child.time}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div class="sidebar-footer">
+                            <div class="footer-item">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="3" />
+                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                                </svg>
+                                <span>Settings</span>
+                            </div>
+                            <div class="footer-item">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                                <span>Provide Feedback</span>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
+                    <main class="middle-canvas">
+                        {/* Terminal specific subheader toolbar */}
                         <div class="terminal-toolbar">
                             <div class="toolbar-left">
+                                <button
+                                    class="sidebar-toggle-btn"
+                                    onClick={this.toggleLeftSidebar}
+                                    title={leftSidebarOpen ? '收起左侧栏' : '展开左侧栏'}
+                                >
+                                    {leftSidebarOpen ? (
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="15 18 9 12 15 6" />
+                                        </svg>
+                                    ) : (
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="9 18 15 12 9 6" />
+                                        </svg>
+                                    )}
+                                </button>
                                 <h2 class="page-title">终端</h2>
                             </div>
+
                             <div class="toolbar-right">
                                 <div class="shell-selector" title="选择 Shell 终端">
                                     <svg
@@ -418,126 +777,248 @@ export class App extends Component<{}, AppState> {
                                         <line x1="14" x2="14" y1="11" y2="17" />
                                     </svg>
                                 </button>
-                                <button class="tool-btn" title="更多终端设置">
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <circle cx="12" cy="12" r="1" />
-                                        <circle cx="19" cy="12" r="1" />
-                                        <circle cx="5" cy="12" r="1" />
-                                    </svg>
+                                <button
+                                    class="tool-btn"
+                                    onClick={this.toggleRightSidebar}
+                                    title={rightSidebarOpen ? '收起右侧栏' : '展开右侧栏'}
+                                >
+                                    {rightSidebarOpen ? (
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="9 18 15 12 9 6" />
+                                        </svg>
+                                    ) : (
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="15 18 9 12 15 6" />
+                                        </svg>
+                                    )}
                                 </button>
                             </div>
                         </div>
 
-                        {/* Terminal Body wrapped in a floating premium card */}
-                        <main class="terminal-card">
-                            <Terminal
-                                id="terminal-container"
-                                wsUrl={wsUrl}
-                                tokenUrl={tokenUrl}
-                                clientOptions={clientOptions}
-                                termOptions={termOptions}
-                                flowControl={flowControl}
-                            />
-                        </main>
-                    </div>
-                )}
-
-                {activeTab === 'agents' && (
-                    <main class="placeholder-view">
-                        <svg
-                            class="placeholder-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M12 8V4H8" />
-                            <rect width="16" height="12" x="4" y="8" rx="2" />
-                            <path d="M2 14h2" />
-                            <path d="M20 14h2" />
-                            <path d="M15 13v2" />
-                            <path d="M9 13v2" />
-                        </svg>
-                        <h3 class="placeholder-title">智能体工作空间</h3>
-                        <p class="placeholder-desc">
-                            这里是智能体编排与训练控制中心。您可以创建、编辑和编排专门的 AI 智能体（如当前的 AI
-                            运维），配置它们的底层工具链和执行逻辑。
-                        </p>
+                        {/* Card wrapper containing the actual Web terminal canvas */}
+                        <div class="terminal-card">
+                            {activeTab === 'terminal' ? (
+                                <Terminal
+                                    id="terminal-container"
+                                    wsUrl={wsUrl}
+                                    tokenUrl={tokenUrl}
+                                    clientOptions={clientOptions}
+                                    termOptions={termOptions}
+                                    flowControl={flowControl}
+                                />
+                            ) : (
+                                <div
+                                    class="placeholder-view"
+                                    style="margin: 0; border: none; border-radius: 0; height: 100%;"
+                                >
+                                    <svg
+                                        class="placeholder-icon"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <rect width="20" height="16" x="2" y="4" rx="2" />
+                                        <path d="m7 8 3 2-3 2" />
+                                        <path d="M12 12h4" />
+                                    </svg>
+                                    <h3 class="placeholder-title">终端就绪</h3>
+                                    <p class="placeholder-desc">在全局导航栏中点击【终端】以开始交互会话。</p>
+                                </div>
+                            )}
+                        </div>
                     </main>
-                )}
 
-                {activeTab === 'console' && (
-                    <main class="placeholder-view">
-                        <svg
-                            class="placeholder-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <rect width="20" height="14" x="2" y="5" rx="2" />
-                            <line x1="2" x2="22" y1="10" y2="10" />
-                        </svg>
-                        <h3 class="placeholder-title">控制台与系统监控</h3>
-                        <p class="placeholder-desc">
-                            实时观测当前智能体的工作负载、网络延时和 CPU
-                            占用率。可视化看板正在筹备中，目前核心的控制流可以直接通过 **终端** 页签输入相关命令执行。
-                        </p>
-                    </main>
-                )}
+                    {/* [COLUMN 3]: RIGHT Side dynamic panel */}
+                    <aside class={`right-panel ${rightSidebarOpen ? '' : 'collapsed'}`}>
+                        <div class="panel-tabs-header">
+                            <span
+                                class={`panel-tab-btn ${rightPanelTab === 'files' ? 'active' : ''}`}
+                                onClick={() => this.setRightPanelTab('files')}
+                            >
+                                文件预览 (Files)
+                            </span>
+                            <span
+                                class={`panel-tab-btn ${rightPanelTab === 'tasks' ? 'active' : ''}`}
+                                onClick={() => this.setRightPanelTab('tasks')}
+                            >
+                                任务追踪 (Tasks)
+                            </span>
+                        </div>
 
-                {activeTab === 'folders' && (
-                    <main class="placeholder-view">
-                        <svg
-                            class="placeholder-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                        </svg>
-                        <h3 class="placeholder-title">文件管理器</h3>
-                        <p class="placeholder-desc">
-                            查看并管理智能体的工作目录和生成产物。支持文件的在线拖拽和拖放上传。您还可以通过在 **终端**
-                            内执行相关的文件传输指令（如 `trz/tsz`）进行更底层的交互。
-                        </p>
-                    </main>
-                )}
+                        <div class="panel-body-scroll">
+                            {rightPanelTab === 'files' && (
+                                <div style="display: flex; flex-direction: column; gap: 16px;">
+                                    {/* Project File Tree Browser */}
+                                    <div class="file-tree-container">
+                                        {projectFiles.map(file => (
+                                            <div
+                                                key={file.path}
+                                                class={`file-node indent-${file.indent} ${
+                                                    selectedFile?.path === file.path ? 'active' : ''
+                                                }`}
+                                                onClick={() => this.selectFile(file)}
+                                            >
+                                                {file.type === 'folder' ? (
+                                                    <svg
+                                                        class="folder-icon"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg
+                                                        class="file-icon"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+                                                        <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+                                                    </svg>
+                                                )}
+                                                <span class="file-name">{file.name}</span>
+                                                {file.size && <span class="file-size">{file.size}</span>}
+                                            </div>
+                                        ))}
+                                    </div>
 
-                {activeTab === 'settings' && (
-                    <main class="placeholder-view">
-                        <svg
-                            class="placeholder-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                        </svg>
-                        <h3 class="placeholder-title">系统偏好设置</h3>
-                        <p class="placeholder-desc">
-                            在此配置终端渲染加速模式（Webgl/Canvas/DOM）、字体大小、默认 shell
-                            以及连接重试逻辑。目前支持亮色/深色主题，可在右上角快速切换。
-                        </p>
-                    </main>
-                )}
+                                    {/* High fidelity syntax preview card */}
+                                    {selectedFile && (
+                                        <div class="code-preview-card">
+                                            <div class="preview-header">
+                                                <span class="preview-title">{selectedFile.path}</span>
+                                                <div
+                                                    class="preview-close"
+                                                    onClick={() => this.setState({ selectedFile: null })}
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <line x1="18" x2="6" y1="6" y2="18" />
+                                                        <line x1="6" x2="18" y1="6" y2="18" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                            <pre class="preview-content">
+                                                {this.renderHighlightedCode(selectedFile.content)}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {rightPanelTab === 'tasks' && (
+                                <div class="task-list-container">
+                                    <div class="task-item completed">
+                                        <svg
+                                            class="check-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="12" cy="12" r="10" />
+                                            <polyline points="12 8 12 12 14 14" />
+                                        </svg>
+                                        <span>分析终端页面布局并制定三栏式重构方案</span>
+                                    </div>
+                                    <div class="task-item completed">
+                                        <svg
+                                            class="check-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="12" cy="12" r="10" />
+                                            <polyline points="12 8 12 12 14 14" />
+                                        </svg>
+                                        <span>构建极简 Workspaces 侧边栏文件树架构</span>
+                                    </div>
+                                    <div class="task-item completed">
+                                        <svg
+                                            class="check-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="12" cy="12" r="10" />
+                                            <polyline points="12 8 12 12 14 14" />
+                                        </svg>
+                                        <span>设计右侧三栏动态面板，集成代码高亮预览器</span>
+                                    </div>
+                                    <div class="task-item completed">
+                                        <svg
+                                            class="check-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="12" cy="12" r="10" />
+                                            <polyline points="12 8 12 12 14 14" />
+                                        </svg>
+                                        <span>支持终端左右侧边栏的响应式折叠逻辑系统</span>
+                                    </div>
+                                    <div class="task-item completed">
+                                        <svg
+                                            class="check-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="12" cy="12" r="10" />
+                                            <polyline points="12 8 12 12 14 14" />
+                                        </svg>
+                                        <span>完成 TypeScript 全局构建与本地交付验证</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </aside>
+                </div>
             </div>
         );
     }
