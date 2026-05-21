@@ -10,10 +10,13 @@ interface WorkspaceHeaderProps {
     setActiveTab: (tab: 'terminal' | 'agents' | 'console' | 'folders') => void;
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
+    keyboardVisible?: boolean;
+    sessionId: string;
+    sessionPath: string;
 }
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
-    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab } = props;
+    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab, keyboardVisible, sessionId, sessionPath } = props;
     // ── Shared SVG icons ──────────────────────────────────────────────────
     const IconFiles = (
         <svg
@@ -70,6 +73,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <line x1="12" x2="20" y1="19" y2="19" />
         </svg>
     );
+    // AI Chat channels icon
+    const IconChannels = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+    );
 
     // session tab is "active" when terminal is shown and right panel is closed
     const sessionActive = activeTab === 'terminal' && activeDrawerTab === 'none';
@@ -106,16 +122,24 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         </button>
                     )}
                     <div class="header-title-group">
-                        <span class="title">1agents</span>
+                        <span class="title">{sessionId || '无会话'}</span>
                         <div class="status-indicator">
                             <div class="pulse-dot" />
-                            <span>运行中</span>
+                            <span title={sessionPath}>{sessionPath ? sessionPath.split('/').pop() : '未连接'}</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Desktop: right shortcut buttons — theme is inside settings drawer */}
+                {/* Desktop: right shortcut buttons — channels, files, git, settings */}
                 <div class="header-right">
+                    <button
+                        id="hdr-btn-channels"
+                        class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
+                        onClick={() => toggleDrawerTab('channels')}
+                        title="AI 渠道连接"
+                    >
+                        {IconChannels}
+                    </button>
                     <button
                         id="hdr-btn-files"
                         class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
@@ -143,8 +167,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                 </div>
             </header>
 
-            {/* Mobile: fixed bottom navigation bar — 终端 / 文件 / 任务 / 设置 */}
-            <nav class="mobile-bottom-nav">
+            {/* Mobile: fixed bottom navigation bar — 终端 / AI 渠道 / 文件 / 任务 / 设置 */}
+            <nav class={`mobile-bottom-nav ${keyboardVisible ? 'keyboard-visible' : ''}`}>
                 <button
                     id="mob-btn-session"
                     class={`mob-nav-btn ${sessionActive ? 'active' : ''}`}
@@ -152,6 +176,14 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                 >
                     {IconSession}
                     <span>终端</span>
+                </button>
+                <button
+                    id="mob-btn-channels"
+                    class={`mob-nav-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
+                    onClick={() => toggleDrawerTab('channels')}
+                >
+                    {IconChannels}
+                    <span>AI 渠道</span>
                 </button>
                 <button
                     id="mob-btn-files"

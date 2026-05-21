@@ -13,6 +13,7 @@ interface MiddleCanvasProps {
     onMobileDetect?: (isMobile: boolean) => void;
     tmuxMouseOn: boolean;
     onTmuxMouseToggle: () => void;
+    onKeyboardStateChange?: (visible: boolean) => void;
 }
 
 export function MiddleCanvas({
@@ -25,6 +26,7 @@ export function MiddleCanvas({
     onMobileDetect,
     tmuxMouseOn,
     onTmuxMouseToggle,
+    onKeyboardStateChange,
 }: MiddleCanvasProps) {
     return (
         <main class="middle-canvas">
@@ -98,6 +100,7 @@ export function MiddleCanvas({
                         termOptions={termOptions}
                         flowControl={flowControl}
                         onMobileDetect={onMobileDetect}
+                        onKeyboardStateChange={onKeyboardStateChange}
                     />
                 ) : (
                     <div class="placeholder-view" style="margin: 0; border: none; border-radius: 0; height: 100%;">

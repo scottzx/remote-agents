@@ -104,6 +104,9 @@ interface AppState {
     wsModalTarget: Workspace | null;
     wsModalName: string;
     wsModalPath: string;
+    wsModalTerminalDir: string;
+    wsModalChatChannel: string;
+    ccConnectUrl: string;
     // ── Terminal / tmux state ──
     terminalWindows: TmuxWindow[];
     terminalWindowsLoading: boolean;
@@ -130,6 +133,10 @@ interface AppState {
     detailFullscreen: boolean;
     isEditingDetail: boolean;
     toastMsg: string;
+    isMobile: boolean;
+    keyboardVisible: boolean;
+    viewportHeight: number;
+    activeSession: Session | null;
 }
 
 // Drag resizer state (module-level for perf)
@@ -159,11 +166,15 @@ export class App extends Component<{}, AppState> {
             workspacesLoading: false,
             folders: [],
             activeWorkspaceId: '',
+            activeSession: null,
             wsModalOpen: false,
             wsModalMode: 'create',
             wsModalTarget: null,
             wsModalName: '',
             wsModalPath: '',
+            wsModalTerminalDir: '',
+            wsModalChatChannel: '',
+            ccConnectUrl: '',
             terminalWindows: [],
             terminalWindowsLoading: false,
             tmuxMouseOn: true,
@@ -186,6 +197,9 @@ export class App extends Component<{}, AppState> {
             detailFullscreen: false,
             isEditingDetail: false,
             toastMsg: '',
+            isMobile: window.innerWidth <= 768,
+            keyboardVisible: false,
+            viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
         };
     }
 
@@ -203,13 +217,33 @@ export class App extends Component<{}, AppState> {
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
+        }
     }
 
     componentWillUnmount() {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
+        if (window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
+        }
     }
+
+    viewportResizeHandler = () => {
+        if (this.state.isMobile) {
+            this.setState({
+                viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
+            });
+            this.triggerTerminalFit();
+        }
+    };
+
+    handleKeyboardStateChange = (visible: boolean) => {
+        this.setState({ keyboardVisible: visible });
+        this.triggerTerminalFit();
+    };
 
     handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -238,20 +272,47 @@ export class App extends Component<{}, AppState> {
                     sessions: prev ? prev.sessions : [],
                 };
             });
-            this.setState({ workspaces, folders, workspacesLoading: false });
+            this.setState({ workspaces, folders, workspacesLoading: false }, () => {
+                if (!this.state.activeWorkspaceId && workspaces.length > 0) {
+                    this.selectWorkspace(workspaces[0]);
+                } else if (this.state.activeWorkspaceId) {
+                    this.loadCcConnectUrl();
+                }
+            });
         } catch (err) {
             console.error('[workspace] load error:', err);
             this.setState({ workspacesLoading: false });
         }
     };
 
+    loadCcConnectUrl = async (workspaceId?: string) => {
+        const wsId = workspaceId || this.state.activeWorkspaceId;
+        if (!wsId) return;
+        try {
+            const res = await fetch(`/api/cc-connect/url?workspace=${encodeURIComponent(wsId)}&theme=${encodeURIComponent(this.state.theme)}`);
+            if (res.ok) {
+                const data = await res.json();
+                this.setState({ ccConnectUrl: data.url });
+            }
+        } catch (err) {
+            console.error('[ccconnect] failed to load url:', err);
+        }
+    };
+
     /** Create a new workspace via POST /api/workspace/create */
-    createWorkspace = async (name: string, path: string) => {
+    createWorkspace = async (name: string, path: string, terminalDir?: string, chatChannel?: string) => {
         const id = name
             .toLowerCase()
             .replace(/\s+/g, '-')
             .replace(/[^a-z0-9-]/g, '');
-        const ws: Workspace = { id, name, path, status: 'active' };
+        const ws: Workspace = {
+            id,
+            name,
+            path,
+            status: 'active',
+            terminalDir: terminalDir?.trim() || undefined,
+            chatChannel: chatChannel?.trim() || undefined,
+        };
         try {
             const res = await fetch('/api/workspace/create', {
                 method: 'POST',
@@ -321,21 +382,36 @@ export class App extends Component<{}, AppState> {
             wsModalTarget: ws,
             wsModalName: ws.name,
             wsModalPath: ws.path,
+            wsModalTerminalDir: ws.terminalDir || '',
+            wsModalChatChannel: ws.chatChannel || '',
         });
     };
 
     closeWsModal = () => {
-        this.setState({ wsModalOpen: false, wsModalTarget: null, wsModalName: '', wsModalPath: '' });
+        this.setState({
+            wsModalOpen: false,
+            wsModalTarget: null,
+            wsModalName: '',
+            wsModalPath: '',
+            wsModalTerminalDir: '',
+            wsModalChatChannel: '',
+        });
     };
 
     submitWsModal = async () => {
-        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath } = this.state;
+        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalTerminalDir, wsModalChatChannel } = this.state;
         if (!wsModalName.trim()) return;
         this.closeWsModal();
         if (wsModalMode === 'create') {
-            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim());
+            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim(), wsModalTerminalDir.trim(), wsModalChatChannel.trim());
         } else if (wsModalMode === 'rename' && wsModalTarget) {
-            await this.updateWorkspace({ ...wsModalTarget, name: wsModalName.trim(), path: wsModalPath.trim() });
+            await this.updateWorkspace({
+                ...wsModalTarget,
+                name: wsModalName.trim(),
+                path: wsModalPath.trim(),
+                terminalDir: wsModalTerminalDir.trim() || undefined,
+                chatChannel: wsModalChatChannel.trim() || undefined,
+            });
         }
     };
 
@@ -373,9 +449,20 @@ export class App extends Component<{}, AppState> {
                         index: w.index,
                         name: `会话 #${w.index}`,
                         active: w.active,
+                        cwd: w.cwd,
                     })),
             })),
         }));
+        const activeWin = windows.find(w => w.active);
+        const activeSession: Session | null = activeWin ? {
+            id: activeWin.name,
+            workspaceId: activeWin.workspaceId,
+            index: activeWin.index,
+            name: `会话 #${activeWin.index}`,
+            active: true,
+            cwd: activeWin.cwd,
+        } : null;
+        this.setState({ activeSession });
     }
 
     /** Create a new terminal tab via POST /api/terminal/create */
@@ -500,6 +587,8 @@ export class App extends Component<{}, AppState> {
             this.setState({
                 activeWorkspaceId: session.workspaceId,
                 folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
+            }, () => {
+                this.loadCcConnectUrl(session.workspaceId);
             });
 
             // Switch backend context and reload file browser / git panel
@@ -516,7 +605,9 @@ export class App extends Component<{}, AppState> {
         const { activeWorkspaceId, terminalWindows } = this.state;
         if (ws.id === activeWorkspaceId) return;
 
-        this.setState({ activeWorkspaceId: ws.id });
+        this.setState({ activeWorkspaceId: ws.id }, () => {
+            this.loadCcConnectUrl(ws.id);
+        });
 
         // Find an existing window for this workspace, or create one
         const win =
@@ -525,7 +616,7 @@ export class App extends Component<{}, AppState> {
         if (win) {
             await this.switchTerminal(win.index);
         } else {
-            await this.createTerminal(ws.id, ws.path);
+            await this.createTerminal(ws.id, ws.terminalDir || ws.path);
         }
 
         // Switch backend context (fs + git roots) and reload file browser
@@ -641,7 +732,13 @@ export class App extends Component<{}, AppState> {
 
     toggleTheme = (themeMode?: 'light' | 'dark') => {
         const targetTheme = themeMode || (this.state.theme === 'light' ? 'dark' : 'light');
-        this.setState({ theme: targetTheme });
+        this.setState({ theme: targetTheme }, () => {
+            // Also notify the CC-Connect iframe of the theme change
+            const iframe = document.getElementById('cc-connect-iframe') as HTMLIFrameElement | null;
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
+            }
+        });
         document.documentElement.setAttribute('data-theme', targetTheme);
         localStorage.setItem('remote-agents-theme', targetTheme);
         this.triggerTerminalFit();
@@ -664,9 +761,14 @@ export class App extends Component<{}, AppState> {
     // Coze click shortcut toggle dynamic drawer logic
     toggleDrawerTab = (tab: RightDrawerTab) => {
         if (this.state.activeDrawerTab === tab) {
+            // Collapse the drawer
             this.setState({ activeDrawerTab: 'none' });
         } else {
-            this.setState({ activeDrawerTab: tab });
+            // Expand drawer with smart width: wider for channels chat panel
+            const smartWidth = tab === 'channels'
+                ? Math.max(this.state.rightPanelWidth, 450)
+                : 320;
+            this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth });
         }
         this.triggerTerminalFit();
     };
@@ -897,6 +999,9 @@ export class App extends Component<{}, AppState> {
             wsModalMode,
             wsModalName,
             wsModalPath,
+            wsModalTerminalDir,
+            wsModalChatChannel,
+            ccConnectUrl,
             flatFiles,
             flatFilesLoading,
             searchQuery,
@@ -914,6 +1019,7 @@ export class App extends Component<{}, AppState> {
             isImagePreview,
             imageDataUrl,
             toastMsg,
+            activeSession,
         } = this.state;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -923,7 +1029,10 @@ export class App extends Component<{}, AppState> {
         } as ITerminalOptions;
 
         // Derive the filesystem path of the currently active workspace
-        const activeWorkspacePath = workspaces.find(w => w.id === activeWorkspaceId)?.path || '.';
+        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+        const activeWorkspacePath = activeWorkspace?.path || '.';
+        const sessionId = activeWorkspace?.name || '';
+        const sessionPath = activeWorkspace?.path || '';
 
         return (
             <div class="app-container">
@@ -983,6 +1092,30 @@ export class App extends Component<{}, AppState> {
                                         if (e.key === 'Enter') this.submitWsModal();
                                     }}
                                 />
+                                <label class="ws-modal-label">终端文件夹 (可选)</label>
+                                <input
+                                    class="ws-modal-input"
+                                    placeholder="终端窗口默认打开的目录 (重写路径)"
+                                    value={wsModalTerminalDir}
+                                    onInput={(e: Event) =>
+                                        this.setState({ wsModalTerminalDir: (e.target as HTMLInputElement).value })
+                                    }
+                                    onKeyDown={(e: KeyboardEvent) => {
+                                        if (e.key === 'Enter') this.submitWsModal();
+                                    }}
+                                />
+                                <label class="ws-modal-label">AI 聊天频道 (可选)</label>
+                                <input
+                                    class="ws-modal-input"
+                                    placeholder="CC-Connect 聊天频道或会话 key"
+                                    value={wsModalChatChannel}
+                                    onInput={(e: Event) =>
+                                        this.setState({ wsModalChatChannel: (e.target as HTMLInputElement).value })
+                                    }
+                                    onKeyDown={(e: KeyboardEvent) => {
+                                        if (e.key === 'Enter') this.submitWsModal();
+                                    }}
+                                />
                             </div>
                             <div class="ws-modal-footer">
                                 <button class="ws-modal-cancel" onClick={this.closeWsModal}>
@@ -1006,7 +1139,18 @@ export class App extends Component<{}, AppState> {
                 )}
 
                 {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
-                <div class="workspace-main-content">
+                <div
+                    class="workspace-main-content"
+                    style={this.state.isMobile ? {
+                        // When keyboard is visible: nav bar hides, so remove its padding
+                        // When keyboard is hidden: CSS static padding-bottom handles it
+                        paddingBottom: this.state.keyboardVisible ? '0' : undefined,
+                        // Also constrain height to visual viewport when keyboard is open
+                        height: this.state.keyboardVisible
+                            ? `${this.state.viewportHeight}px`
+                            : undefined,
+                    } : undefined}
+                >
                     {/* [COZE PAGE HEADER]: Replaces top global header */}
                     <WorkspaceHeader
                         leftSidebarOpen={leftSidebarOpen}
@@ -1017,13 +1161,18 @@ export class App extends Component<{}, AppState> {
                         setActiveTab={this.setActiveTab}
                         theme={theme}
                         toggleTheme={this.toggleTheme}
+                        keyboardVisible={this.state.keyboardVisible}
+                        sessionId={activeSession?.id || ''}
+                        sessionPath={activeSession?.cwd || ''}
                     />
 
                     {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
-                    <div class="workspace-body-container">
+                    <div
+                        class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}
+                    >
                         {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
                         <MiddleCanvas
-                            activeTab={activeTab}
+                            activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
                             wsUrl={wsUrl}
                             tokenUrl={tokenUrl}
                             clientOptions={clientOptions}
@@ -1031,6 +1180,8 @@ export class App extends Component<{}, AppState> {
                             flowControl={flowControl}
                             tmuxMouseOn={tmuxMouseOn}
                             onTmuxMouseToggle={this.toggleTmuxMouse}
+                            onMobileDetect={isMobile => this.setState({ isMobile })}
+                            onKeyboardStateChange={this.handleKeyboardStateChange}
                         />
 
                         {/* Resizer: between MIDDLE canvas and RIGHT panel */}
@@ -1049,6 +1200,7 @@ export class App extends Component<{}, AppState> {
                             activeWorkspacePath={activeWorkspacePath}
                             rightPanelWidth={rightPanelWidth}
                             closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                            ccConnectUrl={ccConnectUrl}
                             theme={theme}
                             toggleTheme={this.toggleTheme}
                             flatFiles={flatFiles}

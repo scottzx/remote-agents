@@ -18,6 +18,7 @@ type TmuxWindow struct {
 	Name       string `json:"name"`
 	Active     bool   `json:"active"`
 	WorkspaceID string `json:"workspaceId"`
+	Cwd        string `json:"cwd"`
 }
 
 // CreateRequest is the body for POST /api/terminal/create.

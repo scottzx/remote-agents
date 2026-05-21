@@ -1,8 +1,11 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
 	"github.com/scottzx/remote-agents/agent/internal/config"
 	ctxt "github.com/scottzx/remote-agents/agent/internal/context"
 	"github.com/scottzx/remote-agents/agent/internal/fs"
@@ -41,6 +44,56 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update) // POST
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)           // DELETE ?id=xxx
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
+
+	// ── CC-Connect Integration API ───────────────────────────────────────────
+	mux.HandleFunc("/api/cc-connect/url", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		wsID := r.URL.Query().Get("workspace")
+		theme := r.URL.Query().Get("theme")
+
+		wsConfig, err := wsHandler.LoadWorkspacesConfig()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var foundWS *workspace.Workspace
+		for i := range wsConfig.Workspaces {
+			if wsConfig.Workspaces[i].ID == wsID {
+				foundWS = &wsConfig.Workspaces[i]
+				break
+			}
+		}
+
+		if foundWS == nil {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+
+		redirectPath := ""
+		if foundWS.ChatChannel != "" {
+			redirectPath = "/chat/" + foundWS.ChatChannel
+		} else {
+			projName := foundWS.Name
+			if projName == "" {
+				projName = foundWS.ID
+			}
+			redirectPath = "/projects/" + projName
+		}
+
+		url := fmt.Sprintf("http://localhost:%d/login?token=%s&redirect=%s&theme=%s",
+			ccconnect.ManagementPort,
+			ccconnect.ManagementToken,
+			redirectPath,
+			theme,
+		)
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(map[string]string{"url": url})
+	})
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)

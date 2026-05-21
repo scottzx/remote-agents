@@ -26,10 +26,12 @@ const configFile = "workspaces_dir.json"
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Status string `json:"status"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Status      string `json:"status"`
+	TerminalDir string `json:"terminalDir,omitempty"`
+	ChatChannel string `json:"chatChannel,omitempty"`
 }
 
 // WorkspacesConfig is the top-level structure stored in workspaces_dir.json.
@@ -76,6 +78,16 @@ func (h *Handler) saveConfig(cfg *WorkspacesConfig) error {
 		return err
 	}
 	return os.WriteFile(h.getConfigPath(), data, 0o644)
+}
+
+// LoadWorkspacesConfig loads and returns the current WorkspacesConfig.
+func (h *Handler) LoadWorkspacesConfig() (*WorkspacesConfig, error) {
+	return h.loadConfig()
+}
+
+// SaveWorkspacesConfig saves the provided WorkspacesConfig.
+func (h *Handler) SaveWorkspacesConfig(cfg *WorkspacesConfig) error {
+	return h.saveConfig(cfg)
 }
 
 // List handles GET /api/workspace/list

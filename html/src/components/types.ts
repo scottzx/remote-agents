@@ -5,6 +5,7 @@ export interface Session {
     index: number;
     name: string;
     active: boolean;
+    cwd?: string;
 }
 
 export interface WorkspaceFolder {
@@ -20,6 +21,8 @@ export interface Workspace {
     name: string;
     path: string;
     status: string;
+    terminalDir?: string;
+    chatChannel?: string;
 }
 
 export type WorkspaceStatus = 'active' | 'inactive' | 'planning' | 'archived';
@@ -54,9 +57,10 @@ export interface TmuxWindow {
     name: string;
     active: boolean;
     workspaceId: string;
+    cwd: string;
 }
 
-export type RightDrawerTab = 'files' | 'git' | 'settings' | 'none';
+export type RightDrawerTab = 'files' | 'git' | 'channels' | 'settings' | 'none';
 
 export function getFileTag(name: string): 'doc' | 'img' | 'code' | 'other' {
     const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
