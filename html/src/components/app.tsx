@@ -3,7 +3,7 @@ import { h, Component } from 'preact';
 import type { ITerminalOptions, ITheme } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from './terminal/xterm';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab } from './types';
+import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, WORKSPACE_STATUSES } from './types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
@@ -101,6 +101,9 @@ interface AppState {
     wsModalTarget: Workspace | null;
     wsModalName: string;
     wsModalPath: string;
+    wsModalStatus: string;
+    // ── Active workspace ──
+    activeWorkspaceId: string;
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -156,6 +159,8 @@ export class App extends Component<{}, AppState> {
             wsModalTarget: null,
             wsModalName: '',
             wsModalPath: '',
+            wsModalStatus: 'active',
+            activeWorkspaceId: '',
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -233,12 +238,12 @@ export class App extends Component<{}, AppState> {
     };
 
     /** Create a new workspace via POST /api/workspace/create */
-    createWorkspace = async (name: string, path: string) => {
+    createWorkspace = async (name: string, path: string, status: string) => {
         const id = name
             .toLowerCase()
             .replace(/\s+/g, '-')
             .replace(/[^a-z0-9-]/g, '');
-        const ws: Workspace = { id, name, path };
+        const ws: Workspace = { id, name, path, status };
         try {
             const res = await fetch('/api/workspace/create', {
                 method: 'POST',
@@ -283,6 +288,18 @@ export class App extends Component<{}, AppState> {
         }
     };
 
+    /** Open the modal for creating a new workspace */
+    openCreateWorkspaceModal = () => {
+        this.setState({
+            wsModalOpen: true,
+            wsModalMode: 'create',
+            wsModalTarget: null,
+            wsModalName: '',
+            wsModalPath: '',
+            wsModalStatus: 'active',
+        });
+    };
+
     /** Open native folder picker and create workspace from selected directory */
     openCreateWorkspacePicker = async () => {
         try {
@@ -294,7 +311,7 @@ export class App extends Component<{}, AppState> {
 
             const sep = pickedPath.includes('\\') ? '\\' : '/';
             const dirName = pickedPath.split(sep).filter(Boolean).pop() || pickedPath;
-            await this.createWorkspace(dirName, pickedPath);
+            await this.createWorkspace(dirName, pickedPath, 'active');
         } catch (err) {
             this.showToast(`选取目录失败: ${err}`);
         }
@@ -308,21 +325,22 @@ export class App extends Component<{}, AppState> {
             wsModalTarget: ws,
             wsModalName: ws.name,
             wsModalPath: ws.path,
+            wsModalStatus: ws.status || 'active',
         });
     };
 
     closeWsModal = () => {
-        this.setState({ wsModalOpen: false, wsModalTarget: null, wsModalName: '', wsModalPath: '' });
+        this.setState({ wsModalOpen: false, wsModalTarget: null, wsModalName: '', wsModalPath: '', wsModalStatus: 'active' });
     };
 
     submitWsModal = async () => {
-        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath } = this.state;
+        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalStatus } = this.state;
         if (!wsModalName.trim()) return;
         this.closeWsModal();
         if (wsModalMode === 'create') {
-            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim());
+            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim(), wsModalStatus);
         } else if (wsModalMode === 'rename' && wsModalTarget) {
-            await this.updateWorkspace({ ...wsModalTarget, name: wsModalName.trim(), path: wsModalPath.trim() });
+            await this.updateWorkspace({ ...wsModalTarget, name: wsModalName.trim(), path: wsModalPath.trim(), status: wsModalStatus });
         }
     };
 
@@ -512,6 +530,41 @@ export class App extends Component<{}, AppState> {
         });
     };
 
+    /** Switch active workspace: update fs/git root, cd terminal, reload file tree */
+    selectWorkspace = async (ws: Workspace) => {
+        const { activeWorkspaceId } = this.state;
+        if (ws.id === activeWorkspaceId) return;
+
+        this.setState({ activeWorkspaceId: ws.id });
+
+        // Switch fs and git roots on the backend
+        try {
+            await fetch('/api/context/set', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: ws.path }),
+            });
+        } catch (err) {
+            console.error('[context] set error:', err);
+        }
+
+        // Send cd command to the terminal
+        try {
+            const term = (window as unknown as { term?: { paste?: (data: string) => void } }).term;
+            if (term && term.paste && ws.path) {
+                term.paste(`cd "${ws.path}" && clear\r`);
+            }
+        } catch {
+            /* terminal may not be ready */
+        }
+
+        // Reload file browser for the new root
+        this.setState({ fsEntries: [], selectedFsEntry: null, fileContent: '', editedContent: '' });
+        this.loadDir('', null);
+        this.loadFlatFiles();
+        this.showToast(`已切换到 "${ws.name}" ✓`);
+    };
+
     // ── Flat file crawler ──────────────────────────────────────────────────
 
     /** Dirs to skip during recursive crawl */
@@ -688,6 +741,8 @@ export class App extends Component<{}, AppState> {
             wsModalMode,
             wsModalName,
             wsModalPath,
+            wsModalStatus,
+            activeWorkspaceId,
             flatFiles,
             flatFilesLoading,
             searchQuery,
@@ -722,12 +777,14 @@ export class App extends Component<{}, AppState> {
                     workspacesLoading={workspacesLoading}
                     leftSidebarOpen={leftSidebarOpen}
                     leftSidebarWidth={leftSidebarWidth}
+                    activeWorkspaceId={activeWorkspaceId}
                     toggleLeftSidebar={this.toggleLeftSidebar}
                     toggleFolder={this.toggleFolder}
                     toggleDrawerTab={this.toggleDrawerTab}
                     onCreateWorkspace={this.openCreateWorkspacePicker}
                     onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
                     onDeleteWorkspace={this.deleteWorkspace}
+                    onSelectWorkspace={this.selectWorkspace}
                 />
 
                 {/* Workspace create/rename modal */}
@@ -766,6 +823,18 @@ export class App extends Component<{}, AppState> {
                                         if (e.key === 'Enter') this.submitWsModal();
                                     }}
                                 />
+                                <label class="ws-modal-label">状态</label>
+                                <select
+                                    class="ws-modal-select"
+                                    value={wsModalStatus}
+                                    onChange={(e: Event) =>
+                                        this.setState({ wsModalStatus: (e.target as HTMLSelectElement).value })
+                                    }
+                                >
+                                    {WORKSPACE_STATUSES.map(s => (
+                                        <option key={s.value} value={s.value}>{s.label}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div class="ws-modal-footer">
                                 <button class="ws-modal-cancel" onClick={this.closeWsModal}>
