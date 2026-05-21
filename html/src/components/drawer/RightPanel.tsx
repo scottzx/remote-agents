@@ -11,6 +11,7 @@ interface RightPanelProps {
     activeWorkspacePath: string;
     rightPanelWidth: number;
     closeDrawer: () => void;
+    ccConnectUrl?: string;
 
     // Theme settings props
     theme: 'light' | 'dark';
@@ -62,6 +63,7 @@ export function RightPanel({
     activeWorkspacePath,
     rightPanelWidth,
     closeDrawer,
+    ccConnectUrl,
 
     theme,
     toggleTheme,
@@ -109,6 +111,8 @@ export function RightPanel({
                 return '文件浏览器 (Files)';
             case 'git':
                 return '版本控制 (Git)';
+            case 'channels':
+                return 'AI 渠道连接 (AI Channels)';
             case 'settings':
                 return '系统终端设置 (Settings)';
             default:
@@ -138,57 +142,67 @@ export function RightPanel({
                 </div>
             </div>
 
-            <div class="panel-body-scroll">
-                {activeDrawerTab === 'files' &&
-                    (viewMode === 'list' ? (
-                        <FlatFileBrowser
-                            flatFiles={flatFiles}
-                            flatFilesLoading={flatFilesLoading}
-                            searchQuery={searchQuery}
-                            selectedFilterTag={selectedFilterTag}
-                            favoriteFiles={favoriteFiles}
-                            onSearchQueryChange={onSearchQueryChange}
-                            onFilterTagChange={onFilterTagChange}
-                            onRefresh={onRefreshFlatFiles}
-                            onOpenFileDetail={onOpenFileDetail}
-                            fsEntries={fsEntries}
-                            fsLoading={fsLoading}
-                            onToggleFsDir={onToggleFsDir}
-                        />
-                    ) : (
-                        selectedFsEntry && (
-                            <FileDetailView
-                                selectedFsEntry={selectedFsEntry}
+            {activeDrawerTab === 'channels' ? (
+                <div class="panel-body-iframe" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; height: 100%;">
+                    <iframe
+                        id="cc-connect-iframe"
+                        src={ccConnectUrl}
+                        style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
+                    />
+                </div>
+            ) : (
+                <div class="panel-body-scroll">
+                    {activeDrawerTab === 'files' &&
+                        (viewMode === 'list' ? (
+                            <FlatFileBrowser
+                                flatFiles={flatFiles}
+                                flatFilesLoading={flatFilesLoading}
+                                searchQuery={searchQuery}
+                                selectedFilterTag={selectedFilterTag}
                                 favoriteFiles={favoriteFiles}
-                                detailFullscreen={detailFullscreen}
-                                isEditingDetail={isEditingDetail}
-                                fileContent={fileContent}
-                                editedContent={editedContent}
-                                fileLoading={fileLoading}
-                                fileSaving={fileSaving}
-                                fileSaveMsg={fileSaveMsg}
-                                isImagePreview={isImagePreview}
-                                imageDataUrl={imageDataUrl}
-                                onBackToList={onBackToList}
-                                onToggleFavorite={onToggleFavorite}
-                                onCopyContent={onCopyContent}
-                                onDuplicateFile={onDuplicateFile}
-                                onDownloadFile={onDownloadFile}
-                                onRenameFile={onRenameFile}
-                                onToggleFullscreen={onToggleFullscreen}
-                                onSaveFile={onSaveFile}
-                                onToggleEditing={onToggleEditing}
-                                onEditedContentChange={onEditedContentChange}
+                                onSearchQueryChange={onSearchQueryChange}
+                                onFilterTagChange={onFilterTagChange}
+                                onRefresh={onRefreshFlatFiles}
+                                onOpenFileDetail={onOpenFileDetail}
+                                fsEntries={fsEntries}
+                                fsLoading={fsLoading}
+                                onToggleFsDir={onToggleFsDir}
                             />
-                        )
-                    ))}
+                        ) : (
+                            selectedFsEntry && (
+                                <FileDetailView
+                                    selectedFsEntry={selectedFsEntry}
+                                    favoriteFiles={favoriteFiles}
+                                    detailFullscreen={detailFullscreen}
+                                    isEditingDetail={isEditingDetail}
+                                    fileContent={fileContent}
+                                    editedContent={editedContent}
+                                    fileLoading={fileLoading}
+                                    fileSaving={fileSaving}
+                                    fileSaveMsg={fileSaveMsg}
+                                    isImagePreview={isImagePreview}
+                                    imageDataUrl={imageDataUrl}
+                                    onBackToList={onBackToList}
+                                    onToggleFavorite={onToggleFavorite}
+                                    onCopyContent={onCopyContent}
+                                    onDuplicateFile={onDuplicateFile}
+                                    onDownloadFile={onDownloadFile}
+                                    onRenameFile={onRenameFile}
+                                    onToggleFullscreen={onToggleFullscreen}
+                                    onSaveFile={onSaveFile}
+                                    onToggleEditing={onToggleEditing}
+                                    onEditedContentChange={onEditedContentChange}
+                                />
+                            )
+                        ))}
 
-                {activeDrawerTab === 'git' && (
-                    <GitPanel workdir={activeWorkspacePath} activeWorkspaceId={activeWorkspaceId} />
-                )}
+                    {activeDrawerTab === 'git' && (
+                        <GitPanel workdir={activeWorkspacePath} activeWorkspaceId={activeWorkspaceId} />
+                    )}
 
-                {activeDrawerTab === 'settings' && <ThemeSettings theme={theme} toggleTheme={toggleTheme} />}
-            </div>
+                    {activeDrawerTab === 'settings' && <ThemeSettings theme={theme} toggleTheme={toggleTheme} />}
+                </div>
+            )}
         </aside>
     );
 }

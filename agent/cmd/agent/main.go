@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
 	"github.com/scottzx/remote-agents/agent/internal/config"
 	"github.com/scottzx/remote-agents/agent/internal/server"
 	"github.com/scottzx/remote-agents/agent/internal/supervisor"
@@ -60,7 +61,10 @@ func main() {
 		time.Sleep(600 * time.Millisecond)
 	}
 
-	// ── 2. Start HTTP gateway ─────────────────────────────────────────────────
+	// ── 2. Start cc-connect Supervisor & engines ──────────────────────────────
+	ccconnect.Start(ctx)
+
+	// ── 3. Start HTTP gateway ─────────────────────────────────────────────────
 	router := server.NewRouter(cfg)
 	httpServer := &http.Server{
 		Addr:         cfg.ListenAddr,

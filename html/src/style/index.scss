@@ -725,6 +725,54 @@ body {
     }
   }
 
+  .header-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .segmented-control {
+    display: flex;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+
+    .segmented-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      height: 28px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      background: transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+      &:hover {
+        color: var(--text-main);
+        background-color: var(--btn-hover);
+      }
+
+      &.active {
+        background-color: var(--accent-light);
+        color: var(--accent-color);
+        border-color: rgba(9, 105, 218, 0.25);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+
+      svg {
+        width: 12px;
+        height: 12px;
+      }
+    }
+  }
+
   /* Coze right shortcut action buttons in red box */
   .header-right {
     display: flex;
@@ -883,6 +931,10 @@ body {
   /* ── Bottom nav: show ── */
   .mobile-bottom-nav {
     display: flex;
+
+    &.keyboard-visible {
+      display: none !important;
+    }
   }
 
   /* ── Left sidebar: becomes a slide-in overlay ── */
@@ -924,29 +976,40 @@ body {
     display: none !important;
   }
 
-  /* ── Workspace main content: fills width, no horizontal overflow ── */
+  /* ── Workspace main content: fills width, pads bottom for fixed nav bar ── */
   .workspace-main-content {
     width: 100%;
     height: 100dvh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    /* Reserve space for the fixed bottom nav bar so content isn't hidden under it */
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* ── Body container: full width, height dynamically set by visualViewport ── */
+  /* ── Body container: fills remaining height via flex, no hard-coded height needed ── */
   .workspace-body-container {
-    height: var(--mobile-body-height, calc(100dvh - 48px - 56px));
+    flex: 1;
     width: 100%;
+    min-height: 0;
     overflow: hidden;
     display: flex !important;
     flex-direction: column !important;
+
+    &.drawer-open {
+      .middle-canvas {
+        display: none !important;
+      }
+    }
   }
 
-  /* ── Middle canvas: height dynamically calculated to leave room for input bar ── */
+  /* ── Middle canvas: fill available space on mobile ── */
   .middle-canvas {
     width: 100%;
-    height: var(--mobile-term-height, auto);
-    flex: none !important;
+    height: 100% !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
     min-height: 0;
     min-width: 0;
 
@@ -1578,21 +1641,27 @@ body {
     }
 
     .key-btn {
-      padding: 6px 12px;
-      min-width: 40px;
-      text-align: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 36px;
+      flex-shrink: 0;
+      padding: 0;
       background-color: var(--bg-page);
       border: 1px solid var(--border-color);
       border-radius: 8px;
       color: var(--text-main);
-      font-size: 13px;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 500;
       cursor: pointer;
       transition: all 0.15s ease;
-      white-space: nowrap;
       user-select: none;
       -webkit-tap-highlight-color: transparent;
+
+      svg {
+        width: 17px;
+        height: 17px;
+        pointer-events: none;
+      }
 
       &:hover {
         background-color: var(--btn-hover);
@@ -1601,7 +1670,16 @@ body {
 
       &:active {
         background-color: var(--border-color);
-        transform: scale(0.94);
+        transform: scale(0.91);
+      }
+
+      // Esc keeps text label — slightly wider
+      &.key-btn-text {
+        width: 46px;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+        letter-spacing: 0.3px;
       }
     }
   }

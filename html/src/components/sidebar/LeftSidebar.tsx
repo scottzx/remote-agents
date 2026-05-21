@@ -225,7 +225,7 @@ export function LeftSidebar({
                                                         title="新建终端"
                                                         onClick={(e: MouseEvent) => {
                                                             e.stopPropagation();
-                                                            onTerminalCreate(ws.id, ws.path);
+                                                            onTerminalCreate(ws.id, ws.terminalDir || ws.path);
                                                         }}
                                                     >
                                                         <svg
