@@ -26,6 +26,17 @@ func NewHandler(root string) *Handler {
 	return &Handler{root: abs}
 }
 
+// SetRoot changes the working directory at runtime.
+func (h *Handler) SetRoot(newRoot string) error {
+	abs, err := filepath.Abs(newRoot)
+	if err != nil {
+		return err
+	}
+	h.root = abs
+	log.Printf("[git] root changed to %q", abs)
+	return nil
+}
+
 // --- Data types ---
 
 // FileStatus represents a single changed file in the working tree.

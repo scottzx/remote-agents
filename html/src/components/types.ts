@@ -17,6 +17,21 @@ export interface Workspace {
     id: string;
     name: string;
     path: string;
+    status: string;
+}
+
+export type WorkspaceStatus = 'active' | 'inactive' | 'planning' | 'archived';
+
+export const WORKSPACE_STATUSES: { value: WorkspaceStatus; label: string }[] = [
+    { value: 'active', label: '进行中' },
+    { value: 'inactive', label: '未激活' },
+    { value: 'planning', label: '规划中' },
+    { value: 'archived', label: '已归档' },
+];
+
+export function getStatusLabel(status: string): string {
+    const found = WORKSPACE_STATUSES.find(s => s.value === status);
+    return found ? found.label : status;
 }
 
 /** A single file or directory entry returned by /api/fs/list */

@@ -30,6 +30,23 @@ func NewHandler(root string) *Handler {
 	return &Handler{root: abs}
 }
 
+// SetRoot changes the sandbox root directory at runtime.
+// Returns an error if the path cannot be resolved.
+func (h *Handler) SetRoot(newRoot string) error {
+	abs, err := filepath.Abs(newRoot)
+	if err != nil {
+		return err
+	}
+	h.root = abs
+	log.Printf("[fs] root changed to %q", abs)
+	return nil
+}
+
+// Root returns the current sandbox root directory.
+func (h *Handler) Root() string {
+	return h.root
+}
+
 // --- Entry types ---
 
 // FileEntry is the JSON representation of a single file or directory.
