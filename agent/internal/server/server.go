@@ -8,6 +8,7 @@ import (
 	"github.com/scottzx/remote-agents/agent/internal/fs"
 	"github.com/scottzx/remote-agents/agent/internal/gateway"
 	"github.com/scottzx/remote-agents/agent/internal/git"
+	"github.com/scottzx/remote-agents/agent/internal/terminal"
 	"github.com/scottzx/remote-agents/agent/internal/workspace"
 )
 
@@ -17,6 +18,7 @@ import (
 //
 //	/api/fs/*         → File system CRUD handlers (Go, local I/O)
 //	/api/workspace/*  → Workspace CRUD handlers (Go, JSON file storage)
+//	/api/terminal/*   → Tmux terminal session management (create/list/kill/switch)
 //	/ws               → Reverse-proxy to ttyd WebSocket endpoint
 //	/token            → Reverse-proxy to ttyd auth-token endpoint
 //	/                 → Static file server (compiled frontend assets)
@@ -57,6 +59,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 	ctxHandler := ctxt.NewHandler(fsHandler, gitHandler)
 	mux.HandleFunc("/api/context/set", ctxHandler.Set) // POST {"path":"..."}
 	mux.HandleFunc("/api/context/get", ctxHandler.Get) // GET
+	// ── Terminal API (tmux session management) ────────────────────────────────
+	termHandler := terminal.NewHandler(cfg)
+	mux.HandleFunc("/api/terminal/create", termHandler.Create) // POST {workspaceId, cwd}
+	mux.HandleFunc("/api/terminal/list", termHandler.List)     // GET
+	mux.HandleFunc("/api/terminal/kill", termHandler.Kill)     // POST {windowIndex}
+	mux.HandleFunc("/api/terminal/switch", termHandler.Switch) // POST {windowIndex}
 
 	// ── ttyd reverse proxy ───────────────────────────────────────────────────
 	// All WebSocket and HTTP traffic destined for ttyd is forwarded here.

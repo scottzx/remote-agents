@@ -3,7 +3,7 @@ import { h, Component } from 'preact';
 import type { ITerminalOptions, ITheme } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from './terminal/xterm';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, WORKSPACE_STATUSES } from './types';
+import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session } from './types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
@@ -77,7 +77,7 @@ const darkTermTheme = {
 } as ITheme;
 
 const baseTermOptions = {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: 'JetBrains Mono, Consolas, Liberation Mono, Menlo, monospace',
     allowProposedApi: true,
 } as ITerminalOptions;
@@ -91,21 +91,20 @@ interface AppState {
     leftSidebarWidth: number;
     rightPanelWidth: number;
     bottomNavHidden: boolean;
-    isMobile: boolean;
-    mobileInput: string;
     // ── Workspace state (from API) ──
     workspaces: Workspace[];
     workspacesLoading: boolean;
     folders: WorkspaceFolder[];
+    activeWorkspaceId: string;
     // ── Workspace modal state ──
     wsModalOpen: boolean;
     wsModalMode: 'create' | 'rename';
     wsModalTarget: Workspace | null;
     wsModalName: string;
     wsModalPath: string;
-    wsModalStatus: string;
-    // ── Active workspace ──
-    activeWorkspaceId: string;
+    // ── Terminal / tmux state ──
+    terminalWindows: TmuxWindow[];
+    terminalWindowsLoading: boolean;
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -153,18 +152,17 @@ export class App extends Component<{}, AppState> {
             leftSidebarWidth: 260,
             rightPanelWidth: 320,
             bottomNavHidden: false,
-            isMobile: false,
-            mobileInput: '',
             workspaces: [],
             workspacesLoading: false,
             folders: [],
+            activeWorkspaceId: '',
             wsModalOpen: false,
             wsModalMode: 'create',
             wsModalTarget: null,
             wsModalName: '',
             wsModalPath: '',
-            wsModalStatus: 'active',
-            activeWorkspaceId: '',
+            terminalWindows: [],
+            terminalWindowsLoading: false,
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -188,11 +186,6 @@ export class App extends Component<{}, AppState> {
     }
 
     componentDidMount() {
-        const isMobile =
-            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-            window.innerWidth <= 768;
-        this.setState({ isMobile });
-
         const savedTheme = localStorage.getItem('remote-agents-theme') as 'light' | 'dark' | null;
         const theme = savedTheme || 'light';
         this.setState({ theme });
@@ -201,36 +194,17 @@ export class App extends Component<{}, AppState> {
         this.loadDir('', null);
         this.loadFlatFiles();
         this.loadWorkspaces();
+        this.loadTerminals();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
-
-        if (isMobile) {
-            this.updateTerminalHeight = () => {
-                const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-                const headerH = 48;   // workspace-header
-                const navH = 56;      // mobile-bottom-nav
-                const inputH = 108;   // mobile-input-bar (quick-keys + input row + padding)
-                const bodyH = vh - headerH - navH;
-                const termH = bodyH - inputH;
-                document.documentElement.style.setProperty('--mobile-body-height', `${bodyH}px`);
-                document.documentElement.style.setProperty('--mobile-term-height', `${termH}px`);
-            };
-            window.visualViewport?.addEventListener('resize', this.updateTerminalHeight);
-            this.updateTerminalHeight();
-        }
     }
 
     componentWillUnmount() {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
-        if (this.updateTerminalHeight) {
-            window.visualViewport?.removeEventListener('resize', this.updateTerminalHeight);
-        }
     }
-
-    private updateTerminalHeight?: () => void;
 
     handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -256,7 +230,7 @@ export class App extends Component<{}, AppState> {
                     id: ws.id,
                     name: ws.name,
                     expanded: prev ? prev.expanded : false,
-                    children: prev ? prev.children : [],
+                    sessions: prev ? prev.sessions : [],
                 };
             });
             this.setState({ workspaces, folders, workspacesLoading: false });
@@ -267,12 +241,12 @@ export class App extends Component<{}, AppState> {
     };
 
     /** Create a new workspace via POST /api/workspace/create */
-    createWorkspace = async (name: string, path: string, status: string) => {
+    createWorkspace = async (name: string, path: string) => {
         const id = name
             .toLowerCase()
             .replace(/\s+/g, '-')
             .replace(/[^a-z0-9-]/g, '');
-        const ws: Workspace = { id, name, path, status };
+        const ws: Workspace = { id, name, path };
         try {
             const res = await fetch('/api/workspace/create', {
                 method: 'POST',
@@ -317,18 +291,6 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    /** Open the modal for creating a new workspace */
-    openCreateWorkspaceModal = () => {
-        this.setState({
-            wsModalOpen: true,
-            wsModalMode: 'create',
-            wsModalTarget: null,
-            wsModalName: '',
-            wsModalPath: '',
-            wsModalStatus: 'active',
-        });
-    };
-
     /** Open native folder picker and create workspace from selected directory */
     openCreateWorkspacePicker = async () => {
         try {
@@ -340,7 +302,7 @@ export class App extends Component<{}, AppState> {
 
             const sep = pickedPath.includes('\\') ? '\\' : '/';
             const dirName = pickedPath.split(sep).filter(Boolean).pop() || pickedPath;
-            await this.createWorkspace(dirName, pickedPath, 'active');
+            await this.createWorkspace(dirName, pickedPath);
         } catch (err) {
             this.showToast(`选取目录失败: ${err}`);
         }
@@ -354,34 +316,145 @@ export class App extends Component<{}, AppState> {
             wsModalTarget: ws,
             wsModalName: ws.name,
             wsModalPath: ws.path,
-            wsModalStatus: ws.status || 'active',
         });
     };
 
     closeWsModal = () => {
-        this.setState({
-            wsModalOpen: false,
-            wsModalTarget: null,
-            wsModalName: '',
-            wsModalPath: '',
-            wsModalStatus: 'active',
-        });
+        this.setState({ wsModalOpen: false, wsModalTarget: null, wsModalName: '', wsModalPath: '' });
     };
 
     submitWsModal = async () => {
-        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalStatus } = this.state;
+        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath } = this.state;
         if (!wsModalName.trim()) return;
         this.closeWsModal();
         if (wsModalMode === 'create') {
-            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim(), wsModalStatus);
+            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim());
         } else if (wsModalMode === 'rename' && wsModalTarget) {
-            await this.updateWorkspace({
-                ...wsModalTarget,
-                name: wsModalName.trim(),
-                path: wsModalPath.trim(),
-                status: wsModalStatus,
+            await this.updateWorkspace({ ...wsModalTarget, name: wsModalName.trim(), path: wsModalPath.trim() });
+        }
+    };
+
+    // ── Terminal (tmux) API helpers ────────────────────────────────────────────
+
+    /** Fetch all tmux windows from GET /api/terminal/list and sync to folders */
+    loadTerminals = async () => {
+        this.setState({ terminalWindowsLoading: true });
+        try {
+            const res = await fetch('/api/terminal/list');
+            if (!res.ok) {
+                this.setState({ terminalWindowsLoading: false });
+                return;
+            }
+            const data = await res.json();
+            const windows: TmuxWindow[] = data.windows || [];
+            this.mergeSessionsIntoFolders(windows);
+            this.setState({ terminalWindows: windows, terminalWindowsLoading: false });
+        } catch (err) {
+            console.error('[terminal] list error:', err);
+            this.setState({ terminalWindowsLoading: false });
+        }
+    };
+
+    /** Sync tmux windows into workspace folders as sessions */
+    mergeSessionsIntoFolders(windows: TmuxWindow[]) {
+        this.setState(prev => ({
+            folders: prev.folders.map(f => ({
+                ...f,
+                sessions: windows
+                    .filter(w => w.workspaceId === f.id)
+                    .map(w => ({
+                        id: w.name,
+                        workspaceId: w.workspaceId,
+                        index: w.index,
+                        name: `会话 #${w.index}`,
+                        active: w.active,
+                    })),
+            })),
+        }));
+    }
+
+    /** Create a new terminal tab via POST /api/terminal/create */
+    createTerminal = async (workspaceId: string, cwd: string) => {
+        try {
+            const res = await fetch('/api/terminal/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId, cwd }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await this.loadTerminals();
+            this.showToast('新会话已创建 ✓');
+        } catch (err) {
+            this.showToast(`创建会话失败: ${err}`);
+        }
+    };
+
+    /** Switch to a tmux window via POST /api/terminal/switch */
+    switchTerminal = async (windowIndex: number) => {
+        try {
+            const res = await fetch('/api/terminal/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ windowIndex }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await this.loadTerminals();
+        } catch (err) {
+            console.error('[terminal] switch error:', err);
+        }
+    };
+
+    /** Kill a terminal tab via POST /api/terminal/kill */
+    killTerminal = async (windowIndex: number) => {
+        try {
+            const res = await fetch('/api/terminal/kill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ windowIndex }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await this.loadTerminals();
+            this.showToast('会话已关闭 ✓');
+        } catch (err) {
+            this.showToast(`关闭会话失败: ${err}`);
+        }
+    };
+
+    /** Switch to a session from sidebar click — also activates its workspace. */
+    selectSession = (session: Session) => {
+        const { activeWorkspaceId } = this.state;
+        this.switchTerminal(session.index);
+        if (session.workspaceId !== activeWorkspaceId) {
+            this.setState({
+                activeWorkspaceId: session.workspaceId,
+                folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
             });
         }
+    };
+
+    /** Switch active workspace and cd into it in a matching tmux window */
+    selectWorkspace = async (ws: Workspace) => {
+        const { activeWorkspaceId, terminalWindows } = this.state;
+        if (ws.id === activeWorkspaceId) return;
+
+        this.setState({ activeWorkspaceId: ws.id });
+
+        // Find an existing window for this workspace
+        const win =
+            terminalWindows.find(w => w.workspaceId === ws.id && w.active) ||
+            terminalWindows.find(w => w.workspaceId === ws.id);
+        if (win) {
+            await this.switchTerminal(win.index);
+        } else {
+            // Create a new terminal for this workspace
+            await this.createTerminal(ws.id, ws.path);
+        }
+
+        // Reload file browser for the new root
+        this.setState({ fsEntries: [], selectedFsEntry: null, fileContent: '', editedContent: '' });
+        this.loadDir('', null);
+        this.loadFlatFiles();
+        this.showToast(`已切换到 "${ws.name}" ✓`);
     };
 
     // ── File system API helpers ──────────────────────────────────────────────
@@ -570,41 +643,6 @@ export class App extends Component<{}, AppState> {
         });
     };
 
-    /** Switch active workspace: update fs/git root, cd terminal, reload file tree */
-    selectWorkspace = async (ws: Workspace) => {
-        const { activeWorkspaceId } = this.state;
-        if (ws.id === activeWorkspaceId) return;
-
-        this.setState({ activeWorkspaceId: ws.id });
-
-        // Switch fs and git roots on the backend
-        try {
-            await fetch('/api/context/set', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: ws.path }),
-            });
-        } catch (err) {
-            console.error('[context] set error:', err);
-        }
-
-        // Send cd command to the terminal
-        try {
-            const term = (window as unknown as { term?: { paste?: (data: string) => void } }).term;
-            if (term && term.paste && ws.path) {
-                term.paste(`cd "${ws.path}" && clear\r`);
-            }
-        } catch {
-            /* terminal may not be ready */
-        }
-
-        // Reload file browser for the new root
-        this.setState({ fsEntries: [], selectedFsEntry: null, fileContent: '', editedContent: '' });
-        this.loadDir('', null);
-        this.loadFlatFiles();
-        this.showToast(`已切换到 "${ws.name}" ✓`);
-    };
-
     // ── Flat file crawler ──────────────────────────────────────────────────
 
     /** Dirs to skip during recursive crawl */
@@ -766,66 +804,6 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    // ── Mobile input handlers ──────────────────────────────────────────────
-
-    handleMobileInput = (event: Event) => {
-        this.setState({ mobileInput: (event.target as HTMLInputElement).value });
-    };
-
-    handleMobileKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            this.sendMobileInput();
-        }
-    };
-
-    sendMobileInput = () => {
-        const { mobileInput } = this.state;
-        if (mobileInput && window.xterm) {
-            window.xterm.sendData(mobileInput + '\r');
-            this.setState({ mobileInput: '' });
-        }
-    };
-
-    sendQuickKey = (key: string) => {
-        const xt = window.xterm;
-        if (!xt) return;
-        switch (key) {
-            case 'Paste':
-                navigator.clipboard.readText().then(text => {
-                    if (text) xt.sendData(text);
-                }).catch(() => {});
-                break;
-            case '↑':
-                xt.sendData('\x1b[A');
-                break;
-            case '↓':
-                xt.sendData('\x1b[B');
-                break;
-            case '←':
-                xt.sendData('\x1b[D');
-                break;
-            case '→':
-                xt.sendData('\x1b[C');
-                break;
-            case 'Esc':
-                xt.sendData('\x1b');
-                break;
-            case '⌫':
-                xt.sendData('\x7f');
-                break;
-            case '↵':
-                xt.sendData('\r');
-                break;
-        }
-    };
-
-    handleMobileDetect = (isMobile: boolean) => {
-        if (this.state.isMobile !== isMobile) {
-            this.setState({ isMobile });
-        }
-    };
-
     render() {
         const {
             activeTab,
@@ -837,12 +815,11 @@ export class App extends Component<{}, AppState> {
             folders,
             workspaces,
             workspacesLoading,
+            activeWorkspaceId,
             wsModalOpen,
             wsModalMode,
             wsModalName,
             wsModalPath,
-            wsModalStatus,
-            activeWorkspaceId,
             flatFiles,
             flatFilesLoading,
             searchQuery,
@@ -860,8 +837,6 @@ export class App extends Component<{}, AppState> {
             isImagePreview,
             imageDataUrl,
             toastMsg,
-            isMobile,
-            mobileInput,
         } = this.state;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -886,7 +861,10 @@ export class App extends Component<{}, AppState> {
                     onCreateWorkspace={this.openCreateWorkspacePicker}
                     onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
                     onDeleteWorkspace={this.deleteWorkspace}
-                    onSelectWorkspace={this.selectWorkspace}
+                    onSelectWorkspace={ws => this.selectWorkspace(ws)}
+                    onSelectSession={s => this.selectSession(s)}
+                    onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
+                    onTerminalKill={idx => this.killTerminal(idx)}
                 />
 
                 {/* Workspace create/rename modal */}
@@ -925,20 +903,6 @@ export class App extends Component<{}, AppState> {
                                         if (e.key === 'Enter') this.submitWsModal();
                                     }}
                                 />
-                                <label class="ws-modal-label">状态</label>
-                                <select
-                                    class="ws-modal-select"
-                                    value={wsModalStatus}
-                                    onChange={(e: Event) =>
-                                        this.setState({ wsModalStatus: (e.target as HTMLSelectElement).value })
-                                    }
-                                >
-                                    {WORKSPACE_STATUSES.map(s => (
-                                        <option key={s.value} value={s.value}>
-                                            {s.label}
-                                        </option>
-                                    ))}
-                                </select>
                             </div>
                             <div class="ws-modal-footer">
                                 <button class="ws-modal-cancel" onClick={this.closeWsModal}>
@@ -977,63 +941,18 @@ export class App extends Component<{}, AppState> {
 
                     {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
                     <div class="workspace-body-container">
-                        {isMobile && activeDrawerTab !== 'none' ? (
-                            /* Mobile single-panel: right drawer replaces terminal */
-                            <RightPanel
-                                activeDrawerTab={activeDrawerTab}
-                                rightPanelWidth={rightPanelWidth}
-                                closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                                theme={theme}
-                                toggleTheme={this.toggleTheme}
-                                flatFiles={flatFiles}
-                                flatFilesLoading={flatFilesLoading}
-                                searchQuery={searchQuery}
-                                selectedFilterTag={selectedFilterTag}
-                                viewMode={viewMode}
-                                favoriteFiles={favoriteFiles}
-                                detailFullscreen={detailFullscreen}
-                                isEditingDetail={isEditingDetail}
-                                selectedFsEntry={selectedFsEntry}
-                                fileContent={fileContent}
-                                editedContent={editedContent}
-                                fileLoading={fileLoading}
-                                fileSaving={fileSaving}
-                                fileSaveMsg={fileSaveMsg}
-                                isImagePreview={isImagePreview}
-                                imageDataUrl={imageDataUrl}
-                                onSearchQueryChange={query => this.setState({ searchQuery: query })}
-                                onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
-                                onRefreshFlatFiles={this.loadFlatFiles}
-                                onOpenFileDetail={this.openFileDetail}
-                                onBackToList={() => this.setState({ viewMode: 'list' })}
-                                onToggleFavorite={this.toggleFavorite}
-                                onCopyContent={this.copyFileContent}
-                                onDuplicateFile={this.duplicateFile}
-                                onDownloadFile={this.downloadFile}
-                                onRenameFile={this.renameFile}
-                                onToggleFullscreen={() => this.setState(s => ({ detailFullscreen: !s.detailFullscreen }))}
-                                onSaveFile={this.saveFile}
-                                onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                                onEditedContentChange={content => this.setState({ editedContent: content })}
-                                fsEntries={this.state.fsEntries}
-                                fsLoading={this.state.fsLoading}
-                                onToggleFsDir={this.toggleFsDir}
-                            />
-                        ) : (
-                            /* Desktop dual-panel or mobile terminal view */
-                            <MiddleCanvas
-                                activeTab={activeTab}
-                                wsUrl={wsUrl}
-                                tokenUrl={tokenUrl}
-                                clientOptions={clientOptions}
-                                termOptions={termOptions}
-                                flowControl={flowControl}
-                                onMobileDetect={this.handleMobileDetect}
-                            />
-                        )}
+                        {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
+                        <MiddleCanvas
+                            activeTab={activeTab}
+                            wsUrl={wsUrl}
+                            tokenUrl={tokenUrl}
+                            clientOptions={clientOptions}
+                            termOptions={termOptions}
+                            flowControl={flowControl}
+                        />
 
-                        {/* Resizer & Right panel: desktop only */}
-                        {!isMobile && activeDrawerTab !== 'none' && (
+                        {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                        {activeDrawerTab !== 'none' && (
                             <div
                                 class="resizer resizer-right"
                                 onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
@@ -1041,19 +960,18 @@ export class App extends Component<{}, AppState> {
                             />
                         )}
 
-                        {!isMobile && (
-                            <RightPanel
-                                activeDrawerTab={activeDrawerTab}
-                                activeWorkspaceId={activeWorkspaceId}
-                                rightPanelWidth={rightPanelWidth}
-                                closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                                theme={theme}
-                                toggleTheme={this.toggleTheme}
-                                flatFiles={flatFiles}
-                                flatFilesLoading={flatFilesLoading}
-                                searchQuery={searchQuery}
-                                selectedFilterTag={selectedFilterTag}
-                                viewMode={viewMode}
+                        {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
+                        <RightPanel
+                            activeDrawerTab={activeDrawerTab}
+                            rightPanelWidth={rightPanelWidth}
+                            closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                            theme={theme}
+                            toggleTheme={this.toggleTheme}
+                            flatFiles={flatFiles}
+                            flatFilesLoading={flatFilesLoading}
+                            searchQuery={searchQuery}
+                            selectedFilterTag={selectedFilterTag}
+                            viewMode={viewMode}
                             favoriteFiles={favoriteFiles}
                             detailFullscreen={detailFullscreen}
                             isEditingDetail={isEditingDetail}
@@ -1083,38 +1001,6 @@ export class App extends Component<{}, AppState> {
                             fsLoading={this.state.fsLoading}
                             onToggleFsDir={this.toggleFsDir}
                         />
-                        )}
-                    {/* Mobile terminal input bar — sits at bottom of body container */}
-                    {isMobile && activeTab === 'terminal' && activeDrawerTab === 'none' && (
-                        <div class="mobile-input-bar">
-                            <div class="mobile-quick-keys">
-                                {['Paste', '↑', '↓', '←', '→', 'Esc', '⌫', '↵'].map(key => (
-                                    <button key={key} class="key-btn" onClick={() => this.sendQuickKey(key)}>
-                                        {key}
-                                    </button>
-                                ))}
-                            </div>
-                            <div class="mobile-input-row">
-                                <input
-                                    type="text"
-                                    value={mobileInput}
-                                    onInput={this.handleMobileInput}
-                                    onKeyDown={this.handleMobileKeyDown}
-                                    onFocus={() => this.setState({ bottomNavHidden: true })}
-                                    onBlur={() => this.setState({ bottomNavHidden: false })}
-                                    placeholder="在此输入以同步到终端..."
-                                    class="mobile-terminal-input"
-                                    autocorrect="off"
-                                    autocapitalize="none"
-                                    autocomplete="off"
-                                    spellcheck={false}
-                                />
-                                <button class="mobile-terminal-send" onClick={this.sendMobileInput}>
-                                    发送
-                                </button>
-                            </div>
-                        </div>
-                    )}
                     </div>
                 </div>
 

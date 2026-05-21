@@ -24,13 +24,13 @@ export function MiddleCanvas({
 }: MiddleCanvasProps) {
     return (
         <main class="middle-canvas">
+            {/* ── Toolbar ────────────────────────────────────────────────────── */}
             <div class="terminal-toolbar">
                 <div class="toolbar-left">
                     <h2 class="page-title">系统主控制终端</h2>
                 </div>
-
                 <div class="toolbar-right">
-                    <div class="shell-selector" title="选择 Shell 终端">
+                    <div class="shell-selector" title="当前 Shell: tmux">
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -42,7 +42,7 @@ export function MiddleCanvas({
                             <polyline points="4 17 10 11 4 5" />
                             <line x1="12" x2="20" y1="19" y2="19" />
                         </svg>
-                        <span>bash</span>
+                        <span>tmux</span>
                         <svg
                             width="10"
                             height="10"
@@ -56,49 +56,10 @@ export function MiddleCanvas({
                             <polyline points="6 9 12 15 18 9" />
                         </svg>
                     </div>
-                    <button class="tool-btn" title="添加新标签页">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M5 12h14M12 5v14" />
-                        </svg>
-                    </button>
-                    <button class="tool-btn" title="分屏显示">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <rect width="18" height="18" x="3" y="3" rx="2" />
-                            <line x1="12" x2="12" y1="3" y2="21" />
-                        </svg>
-                    </button>
-                    <button class="tool-btn btn-danger" title="终止并清理当前终端">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                            <line x1="10" x2="10" y1="11" y2="17" />
-                            <line x1="14" x2="14" y1="11" y2="17" />
-                        </svg>
-                    </button>
                 </div>
             </div>
 
-            {/* Card wrapper containing the actual Web terminal canvas */}
+            {/* ── Terminal canvas ─────────────────────────────────────────────── */}
             <div class="terminal-card">
                 {activeTab === 'terminal' ? (
                     <Terminal
