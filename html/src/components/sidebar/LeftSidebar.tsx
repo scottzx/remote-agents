@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
-import { WorkspaceFolder, Workspace, RightDrawerTab } from '../types';
+import { WorkspaceFolder, Workspace, RightDrawerTab, getStatusLabel } from '../types';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -8,12 +8,14 @@ interface LeftSidebarProps {
     workspacesLoading: boolean;
     leftSidebarOpen: boolean;
     leftSidebarWidth: number;
+    activeWorkspaceId: string;
     toggleLeftSidebar: () => void;
     toggleFolder: (id: string) => void;
     toggleDrawerTab: (tab: RightDrawerTab) => void;
     onCreateWorkspace: () => void;
     onRenameWorkspace: (ws: Workspace) => void;
     onDeleteWorkspace: (id: string) => void;
+    onSelectWorkspace: (ws: Workspace) => void;
 }
 
 export function LeftSidebar({
@@ -22,12 +24,14 @@ export function LeftSidebar({
     workspacesLoading,
     leftSidebarOpen,
     leftSidebarWidth,
+    activeWorkspaceId,
     toggleLeftSidebar,
     toggleFolder,
     toggleDrawerTab,
     onCreateWorkspace,
     onRenameWorkspace,
     onDeleteWorkspace,
+    onSelectWorkspace,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -178,11 +182,12 @@ export function LeftSidebar({
                             const ws = workspaces.find(w => w.id === folder.id);
                             const isHovered = hoveredId === folder.id;
                             const isConfirmingDelete = confirmDeleteId === folder.id;
+                            const isActive = ws?.id === activeWorkspaceId;
 
                             return (
                                 <div
                                     key={folder.id}
-                                    class="project-node"
+                                    class={`project-node ${isActive ? 'ws-active' : ''}`}
                                     onMouseEnter={() => setHoveredId(folder.id)}
                                     onMouseLeave={() => {
                                         setHoveredId(null);
@@ -205,43 +210,64 @@ export function LeftSidebar({
                                         </div>
                                     ) : (
                                         <div
-                                            class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
-                                            onClick={() => toggleFolder(folder.id)}
+                                            class={`project-folder ${folder.expanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
                                         >
-                                            <svg
-                                                class="chevron"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
+                                            <div
+                                                class="folder-click-area"
+                                                onClick={() => toggleFolder(folder.id)}
                                             >
-                                                <polyline points="9 18 15 12 9 6" />
-                                            </svg>
-                                            <svg
-                                                class="folder-icon"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                            </svg>
-                                            <span class="ws-name" title={ws?.path || folder.name}>
-                                                {folder.name}
-                                            </span>
+                                                <svg
+                                                    class="chevron"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2.5"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <polyline points="9 18 15 12 9 6" />
+                                                </svg>
+                                                <svg
+                                                    class="folder-icon"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                </svg>
+                                                <span class="ws-name" title={ws?.path || folder.name}>
+                                                    {folder.name}
+                                                </span>
+                                                {ws?.status && (
+                                                    <span class={`ws-status-badge ws-status-${ws.status}`}>
+                                                        {getStatusLabel(ws.status)}
+                                                    </span>
+                                                )}
+                                            </div>
 
-                                            {/* Action buttons - only shown on hover */}
-                                            {isHovered && ws && (
+                                            {/* Action buttons: select (always), edit/delete (on hover) */}
+                                            {ws && (
                                                 <div
                                                     class="ws-actions"
                                                     onClick={(e: MouseEvent) => e.stopPropagation()}
                                                 >
+                                                    {ws.path && (
+                                                        <button
+                                                            class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
+                                                            title={isActive ? '当前工作空间' : '点击切换工作空间'}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onSelectWorkspace(ws);
+                                                            }}
+                                                        >
+                                                            {isActive ? '✓' : '→'}
+                                                        </button>
+                                                    )}
                                                     <button
-                                                        class="ws-action-btn"
+                                                        class="ws-action-btn ws-action-edit"
                                                         title="编辑"
                                                         onClick={(e: MouseEvent) => {
                                                             e.stopPropagation();

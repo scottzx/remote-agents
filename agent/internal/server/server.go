@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/scottzx/remote-agents/agent/internal/config"
+	ctxt "github.com/scottzx/remote-agents/agent/internal/context"
 	"github.com/scottzx/remote-agents/agent/internal/fs"
 	"github.com/scottzx/remote-agents/agent/internal/gateway"
 	"github.com/scottzx/remote-agents/agent/internal/git"
@@ -51,6 +52,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/git/checkout", gitHandler.Checkout) // POST {branch:"…",create:bool}
 	mux.HandleFunc("/api/git/push", gitHandler.Push)         // POST
 	mux.HandleFunc("/api/git/pull", gitHandler.Pull)         // POST
+
+	// ── Workspace context API (switches fs + git roots at runtime) ─────────
+	ctxHandler := ctxt.NewHandler(fsHandler, gitHandler)
+	mux.HandleFunc("/api/context/set", ctxHandler.Set) // POST {"path":"..."}
+	mux.HandleFunc("/api/context/get", ctxHandler.Get) // GET
 
 	// ── ttyd reverse proxy ───────────────────────────────────────────────────
 	// All WebSocket and HTTP traffic destined for ttyd is forwarded here.
