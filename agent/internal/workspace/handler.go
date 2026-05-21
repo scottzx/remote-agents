@@ -8,14 +8,24 @@ import (
 	"path/filepath"
 )
 
-const configDir = "/Users/scott/.remote-agents"
+var configDir string
+
+func init() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	configDir = filepath.Join(home, ".remote-agents")
+}
+
 const configFile = "workspaces_dir.json"
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Status string `json:"status"`
 }
 
 // WorkspacesConfig is the top-level structure stored in workspaces_dir.json.
