@@ -1,6 +1,6 @@
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
-import { WorkspaceFolder, Workspace, RightDrawerTab } from '../types';
+import { useState, useRef } from 'preact/hooks';
+import { WorkspaceFolder, Workspace, RightDrawerTab, getStatusLabel } from '../types';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -8,12 +8,14 @@ interface LeftSidebarProps {
     workspacesLoading: boolean;
     leftSidebarOpen: boolean;
     leftSidebarWidth: number;
+    activeWorkspaceId: string;
     toggleLeftSidebar: () => void;
     toggleFolder: (id: string) => void;
     toggleDrawerTab: (tab: RightDrawerTab) => void;
     onCreateWorkspace: () => void;
     onRenameWorkspace: (ws: Workspace) => void;
     onDeleteWorkspace: (id: string) => void;
+    onSelectWorkspace: (ws: Workspace) => void;
 }
 
 export function LeftSidebar({
@@ -22,30 +24,34 @@ export function LeftSidebar({
     workspacesLoading,
     leftSidebarOpen,
     leftSidebarWidth,
+    activeWorkspaceId,
     toggleLeftSidebar,
     toggleFolder,
     toggleDrawerTab,
     onCreateWorkspace,
     onRenameWorkspace,
     onDeleteWorkspace,
+    onSelectWorkspace,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
-    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handleDeleteClick = (e: MouseEvent, id: string) => {
-        e.stopPropagation();
-        setConfirmDeleteId(id);
+    const handleMouseDown = (e: MouseEvent, id: string) => {
+        if ((e.target as HTMLElement).closest('.ws-actions')) return;
+        longPressTimer.current = setTimeout(() => {
+            const ws = workspaces.find(w => w.id === id);
+            if (ws && window.confirm(`是否移除工作空间 "${ws.name}"？`)) {
+                onDeleteWorkspace(id);
+            }
+            longPressTimer.current = null;
+        }, 600);
     };
 
-    const confirmDelete = (e: MouseEvent, id: string) => {
-        e.stopPropagation();
-        setConfirmDeleteId(null);
-        onDeleteWorkspace(id);
-    };
-
-    const cancelDelete = (e: MouseEvent) => {
-        e.stopPropagation();
-        setConfirmDeleteId(null);
+    const handleMouseUp = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
     };
 
     return (
@@ -176,38 +182,24 @@ export function LeftSidebar({
                     {!workspacesLoading &&
                         folders.map(folder => {
                             const ws = workspaces.find(w => w.id === folder.id);
-                            const isHovered = hoveredId === folder.id;
-                            const isConfirmingDelete = confirmDeleteId === folder.id;
+                            const isActive = ws?.id === activeWorkspaceId;
 
                             return (
                                 <div
                                     key={folder.id}
-                                    class="project-node"
+                                    class={`project-node ${isActive ? 'ws-active' : ''}`}
                                     onMouseEnter={() => setHoveredId(folder.id)}
                                     onMouseLeave={() => {
                                         setHoveredId(null);
-                                        if (confirmDeleteId === folder.id) setConfirmDeleteId(null);
+                                        handleMouseUp();
                                     }}
+                                    onMouseDown={(e: MouseEvent) => handleMouseDown(e, folder.id)}
+                                    onMouseUp={handleMouseUp}
                                 >
-                                    {isConfirmingDelete ? (
-                                        /* Delete confirm inline */
-                                        <div class="ws-delete-confirm">
-                                            <span>删除 "{folder.name}"？</span>
-                                            <button
-                                                class="ws-del-yes"
-                                                onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
-                                            >
-                                                删除
-                                            </button>
-                                            <button class="ws-del-no" onClick={cancelDelete}>
-                                                取消
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
-                                            onClick={() => toggleFolder(folder.id)}
-                                        >
+                                    <div
+                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
+                                    >
+                                        <div class="folder-click-area" onClick={() => toggleFolder(folder.id)}>
                                             <svg
                                                 class="chevron"
                                                 viewBox="0 0 24 24"
@@ -233,56 +225,54 @@ export function LeftSidebar({
                                             <span class="ws-name" title={ws?.path || folder.name}>
                                                 {folder.name}
                                             </span>
-
-                                            {/* Action buttons - only shown on hover */}
-                                            {isHovered && ws && (
-                                                <div
-                                                    class="ws-actions"
-                                                    onClick={(e: MouseEvent) => e.stopPropagation()}
-                                                >
-                                                    <button
-                                                        class="ws-action-btn"
-                                                        title="编辑"
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onRenameWorkspace(ws);
-                                                        }}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        class="ws-action-btn ws-action-delete"
-                                                        title="删除"
-                                                        onClick={(e: MouseEvent) => handleDeleteClick(e, folder.id)}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <polyline points="3 6 5 6 21 6" />
-                                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                            <path d="M10 11v6M14 11v6" />
-                                                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                        </svg>
-                                                    </button>
-                                                </div>
+                                            {ws?.status && (
+                                                <span class={`ws-status-badge ws-status-${ws.status}`}>
+                                                    {getStatusLabel(ws.status)}
+                                                </span>
                                             )}
                                         </div>
-                                    )}
+
+                                        {/* Action buttons: edit (hover), select (always, rightmost) */}
+                                        {ws && (
+                                            <div
+                                                class="ws-actions"
+                                                onClick={(e: MouseEvent) => e.stopPropagation()}
+                                            >
+                                                <button
+                                                    class="ws-action-btn ws-action-edit"
+                                                    title="编辑"
+                                                    onClick={(e: MouseEvent) => {
+                                                        e.stopPropagation();
+                                                        onRenameWorkspace(ws);
+                                                    }}
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                    </svg>
+                                                </button>
+                                                {ws.path && (
+                                                    <button
+                                                        class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
+                                                        title={isActive ? '当前工作空间' : '点击切换工作空间'}
+                                                        onClick={(e: MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            onSelectWorkspace(ws);
+                                                        }}
+                                                    >
+                                                        {isActive ? '✓' : '→'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
 
                                     {folder.expanded && (
                                         <div class="project-children">
