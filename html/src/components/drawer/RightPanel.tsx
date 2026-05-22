@@ -108,13 +108,13 @@ export function RightPanel({
     const getDrawerTitle = (tab: RightDrawerTab) => {
         switch (tab) {
             case 'files':
-                return '文件浏览器 (Files)';
+                return '资源管理';
             case 'git':
-                return '版本控制 (Git)';
+                return '版本控制';
             case 'channels':
-                return 'AI 渠道连接 (AI Channels)';
+                return '消息渠道';
             case 'settings':
-                return '系统终端设置 (Settings)';
+                return '系统设置';
             default:
                 return '';
         }
