@@ -117,7 +117,19 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: html-header
-          path: src
+          path: temp-html-header
+
+      - name: Copy html.h to src/
+        run: |
+          if [ -f temp-html-header/src/html.h ]; then
+            cp temp-html-header/src/html.h src/html.h
+          elif [ -f temp-html-header/html.h ]; then
+            cp temp-html-header/html.h src/html.h
+          else
+            echo "html.h not found!"
+            find temp-html-header -type f
+            exit 1
+          fi
 
       - name: Install cross-build packages
         run: |
@@ -193,7 +205,19 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: html-header
-          path: src
+          path: temp-html-header
+
+      - name: Copy html.h to src/
+        run: |
+          if [ -f temp-html-header/src/html.h ]; then
+            cp temp-html-header/src/html.h src/html.h
+          elif [ -f temp-html-header/html.h ]; then
+            cp temp-html-header/html.h src/html.h
+          else
+            echo "html.h not found!"
+            find temp-html-header -type f
+            exit 1
+          fi
 
       - name: Install build dependencies via Homebrew
         run: brew install cmake libuv json-c openssl libwebsockets
