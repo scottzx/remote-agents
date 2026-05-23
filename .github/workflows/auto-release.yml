@@ -133,7 +133,7 @@ jobs:
         run: |
           npm install -g pnpm
           cd cc-connect/web
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile --dangerously-allow-all-builds
           pnpm build
 
       - name: Build Go remote-agent
@@ -208,7 +208,7 @@ jobs:
         run: |
           npm install -g pnpm
           cd cc-connect/web
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile --dangerously-allow-all-builds
           pnpm build
 
       - name: Build Go remote-agent
