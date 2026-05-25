@@ -221,7 +221,7 @@ export class App extends Component<{}, AppState> {
         };
     }
 
-    componentDidMount() {
+    async componentDidMount() {
         const savedTheme = localStorage.getItem('remote-agents-theme') as 'light' | 'dark' | null;
         const theme = savedTheme || 'light';
         this.setState({ theme });
@@ -229,8 +229,21 @@ export class App extends Component<{}, AppState> {
         this.setState({ hostname: window.location.hostname || 'localhost' });
         this.loadDir('', null);
         this.loadFlatFiles();
-        this.loadWorkspaces();
-        this.loadTerminals();
+
+        // Wait for both workspaces and terminal sessions to load in parallel
+        await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+
+        // Synchronize terminal windows into folders
+        this.mergeSessionsIntoFolders(this.state.terminalWindows);
+
+        // Select default workspace if none is active
+        const { workspaces, activeWorkspaceId } = this.state;
+        if (!activeWorkspaceId && workspaces.length > 0) {
+            await this.selectWorkspace(workspaces[0]);
+        } else if (activeWorkspaceId) {
+            await this.loadCcConnectUrl();
+        }
+
         this.loadTmuxMouse();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
@@ -273,7 +286,7 @@ export class App extends Component<{}, AppState> {
     // ── Workspace API helpers ─────────────────────────────────────────────────
 
     /** Fetch all workspaces from GET /api/workspace/list */
-    loadWorkspaces = async () => {
+    loadWorkspaces = async (skipAutoSelect = false) => {
         this.setState({ workspacesLoading: true });
         try {
             const res = await fetch('/api/workspace/list');
@@ -291,6 +304,7 @@ export class App extends Component<{}, AppState> {
                 };
             });
             this.setState({ workspaces, folders, workspacesLoading: false }, () => {
+                if (skipAutoSelect) return;
                 if (!this.state.activeWorkspaceId && workspaces.length > 0) {
                     this.selectWorkspace(workspaces[0]);
                 } else if (this.state.activeWorkspaceId) {
