@@ -160,7 +160,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// View handles GET /api/fs/view?path=<relative-path>
+// View handles GET /api/fs/view/<relative-path> (or /api/fs/view?path=<relative-path> as fallback)
 // Serves the file with the appropriate content-type for direct browser rendering (e.g. HTML preview).
 func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -168,7 +168,13 @@ func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rel := r.URL.Query().Get("path")
+	// Extract path from subpath first (e.g. /api/fs/view/folder/file.html)
+	rel := strings.TrimPrefix(r.URL.Path, "/api/fs/view/")
+	if rel == r.URL.Path || rel == "" {
+		// Fallback to query parameter
+		rel = r.URL.Query().Get("path")
+	}
+
 	abs, ok := h.safeAbs(rel)
 	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -181,6 +187,12 @@ func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info.IsDir() {
+		// If it's a directory, check if index.html exists inside it and serve it
+		indexPath := filepath.Join(abs, "index.html")
+		if indexInfo, err := os.Stat(indexPath); err == nil && !indexInfo.IsDir() {
+			http.ServeFile(w, r, indexPath)
+			return
+		}
 		http.Error(w, "path is a directory", http.StatusBadRequest)
 		return
 	}

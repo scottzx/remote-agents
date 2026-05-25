@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@scottzx/remote-agents": "^20260525.1.0"
+  }
+}

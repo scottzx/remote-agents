@@ -46,7 +46,6 @@ export function FileDetailView({
     onDuplicateFile,
     onDownloadFile,
     onRenameFile,
-    onToggleFullscreen,
     onSaveFile,
     onToggleEditing,
     onEditedContentChange,
@@ -96,7 +95,7 @@ export function FileDetailView({
                     {(isHtml || isPdf) && (
                         <a
                             class="fb-icon-btn"
-                            href={`/api/fs/view?path=${encodeURIComponent(selectedFsEntry.path)}`}
+                            href={`/api/fs/view/${selectedFsEntry.path.split('/').map(encodeURIComponent).join('/')}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             title="在新窗口打开预览"
@@ -187,18 +186,6 @@ export function FileDetailView({
                             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                         </svg>
                     </button>
-                    <button class="fb-icon-btn" onClick={onToggleFullscreen} title="全屏">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                        </svg>
-                    </button>
                 </div>
             </div>
             {/* Save bar */}
@@ -248,14 +235,14 @@ export function FileDetailView({
                 ) : isHtml ? (
                     <div class="fb-html-preview-container">
                         <iframe
-                            src={`/api/fs/view?path=${encodeURIComponent(selectedFsEntry.path)}`}
+                            src={`/api/fs/view/${selectedFsEntry.path.split('/').map(encodeURIComponent).join('/')}`}
                             class="fb-html-iframe"
                         />
                     </div>
                 ) : isPdf ? (
                     <div class="fb-pdf-preview-container">
                         <iframe
-                            src={`/api/fs/view?path=${encodeURIComponent(selectedFsEntry.path)}`}
+                            src={`/api/fs/view/${selectedFsEntry.path.split('/').map(encodeURIComponent).join('/')}`}
                             class="fb-pdf-iframe"
                         />
                     </div>
