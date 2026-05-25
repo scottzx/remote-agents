@@ -875,7 +875,6 @@ export class App extends Component<{}, AppState> {
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
             }
-            this.updateCcConnectUrlParams(targetTheme, this.state.language);
         });
         document.documentElement.setAttribute('data-theme', targetTheme);
         localStorage.setItem('remote-agents-theme', targetTheme);
@@ -889,7 +888,6 @@ export class App extends Component<{}, AppState> {
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
             }
-            this.updateCcConnectUrlParams(this.state.theme, lang);
         });
         localStorage.setItem('remote-agents-language', lang);
         this.showToast(`默认识别语言已切换为: ${lang === 'zh-CN' ? '中文' : 'English'} ✓`);
