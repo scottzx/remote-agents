@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"os"
+	"time"
+)
 
 // Config holds all runtime configuration for the remote-agent daemon.
 type Config struct {
@@ -42,15 +45,20 @@ type Config struct {
 
 // Default returns a Config populated with safe default values.
 func Default() *Config {
+	workDir := "."
+	if home, err := os.UserHomeDir(); err == nil {
+		workDir = home
+	}
 	return &Config{
 		ListenAddr:     ":8080",
 		TtydAddr:       "127.0.0.1:7681",
 		TtydBinaryPath: "./ttyd",
 		TtydArgs:       []string{"tmux", "new-session", "-A", "-s", "remote-agents"},
-			TmuxSession:    "remote-agents",
-		WorkDir:        ".",
+		TmuxSession:    "remote-agents",
+		WorkDir:        workDir,
 		StaticDir:      "./html/dist",
 		RestartDelay:   3 * time.Second,
 		MaxRestarts:    5,
 	}
 }
+

@@ -31,8 +31,8 @@ remote-agent -listen :9000 -workdir /path/to/your/workspace
 ## 常用参数
 
 - `-listen string`：服务对外监听地址（默认 `":8080"`）
-- `-workdir string`：工作台暴露的文件系统根目录（默认 `"."`）
-- `-tmux-session string`：用于终端持久化的 tmux 会话名称（默认 `"remote-agents"`）
+- `-workdir string`：工作台暴露的文件系统根目录（默认 `"~"`）
+- `-tmux-session string`：用于终端持久化的 tmux会话名称（默认 `"remote-agents"`）
 - `-no-ttyd`：跳过启动内嵌的 ttyd 进程
 
 更多详情与文档请参考 GitHub 仓库：https://github.com/scottzx/remote-agents
