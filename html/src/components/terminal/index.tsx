@@ -124,8 +124,8 @@ export class Terminal extends Component<Props, State> {
         const deltaY = currentY - this.touchStartY;
         const lineThreshold = 24; // 触控移动 24px 触发一次滚动
         if (Math.abs(deltaY) >= lineThreshold) {
-            // 每次滚动精准挪动 2 行，实现非常可控和平滑的阅读体验
-            const lines = deltaY > 0 ? 2 : -2;
+            // 每次滚动精准挪动 1 行，实现极佳的阅读行控制体验
+            const lines = deltaY > 0 ? 1 : -1;
             if (this.xterm) {
                 this.xterm.scrollLines(-lines);
             }

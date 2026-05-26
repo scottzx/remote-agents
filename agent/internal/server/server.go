@@ -14,6 +14,7 @@ import (
 	"github.com/scottzx/remote-agents/agent/internal/gateway"
 	"github.com/scottzx/remote-agents/agent/internal/git"
 	"github.com/scottzx/remote-agents/agent/internal/terminal"
+	"github.com/scottzx/remote-agents/agent/internal/tunnel"
 	"github.com/scottzx/remote-agents/agent/internal/workspace"
 )
 
@@ -167,11 +168,163 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.Handle("/assets/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 	mux.Handle("/api/v1/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 
+	// ── Tunnel API (on-demand dynamic tunnel control) ────────────────────────
+	mux.HandleFunc("/api/tunnel/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Verify ManagementToken for security (from CC-Connector / AI Agent)
+		authHeader := r.Header.Get("Authorization")
+		expectedAuth := "Bearer " + ccconnect.ManagementToken
+		if authHeader != expectedAuth && r.URL.Query().Get("token") != ccconnect.ManagementToken {
+			http.Error(w, "unauthorized control command", http.StatusUnauthorized)
+			return
+		}
+
+		// Extract local port from ListenAddr
+		port := tunnel.PortFrom(cfg.ListenAddr)
+		
+		// Start the tunnel (blocks up to 15s until dynamic URL is captured)
+		publicURL, token, err := tunnel.DefaultSupervisor.Start(port)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"url":   publicURL,
+			"token": token,
+			"link":  fmt.Sprintf("%s/?token=%s", publicURL, token),
+		})
+	})
+
+	mux.HandleFunc("/api/tunnel/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Verify ManagementToken for security
+		authHeader := r.Header.Get("Authorization")
+		expectedAuth := "Bearer " + ccconnect.ManagementToken
+		if authHeader != expectedAuth && r.URL.Query().Get("token") != ccconnect.ManagementToken {
+			http.Error(w, "unauthorized control command", http.StatusUnauthorized)
+			return
+		}
+
+		if err := tunnel.DefaultSupervisor.Stop(); err != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+	})
+
+	mux.HandleFunc("/api/tunnel/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		isActive, publicURL, token := tunnel.DefaultSupervisor.GetStatus()
+		
+		var link string
+		if isActive {
+			link = fmt.Sprintf("%s/?token=%s", publicURL, token)
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"active": isActive,
+			"url":    publicURL,
+			"token":  token,
+			"link":   link,
+		})
+	})
+
 	// ── Static frontend assets ───────────────────────────────────────────────
 	// This catch-all must be registered last so it does not shadow the routes
 	// above. html/dist must contain an index.html for SPA-style navigation.
 	staticFS := http.FileServer(http.Dir(cfg.StaticDir))
 	mux.Handle("/", staticFS)
 
-	return mux
+	return authMiddleware(mux, cfg)
 }
+
+// authMiddleware intercepts all requests when the public tunnel is active,
+// enforcing session-token and secure HttpOnly cookie validation.
+func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Retrieve the current active tunnel state
+		isActive, _, activeToken := tunnel.DefaultSupervisor.GetStatus()
+		if !isActive || activeToken == "" {
+			// If tunnel is not active, standard local/LAN access is unblocked
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// 2. Bypass authentication check for tunnel control APIs themselves
+		if strings.HasPrefix(r.URL.Path, "/api/tunnel/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		authenticated := false
+
+		// Mechanism A: Query token parameter in URL (?token=...)
+		if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
+			if tokenParam == activeToken {
+				authenticated = true
+				// Write secure HttpOnly session cookie to browser
+				http.SetCookie(w, &http.Cookie{
+					Name:     "ra_session_token",
+					Value:    activeToken,
+					Path:     "/",
+					HttpOnly: true,
+					Secure:   true, // Required by browsers for dynamic HTTPS tunnels
+					SameSite: http.SameSiteLaxMode,
+				})
+			}
+		}
+
+		// Mechanism B: Bearer token in Authorization header
+		if !authenticated {
+			authHeader := r.Header.Get("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				headerToken := strings.TrimPrefix(authHeader, "Bearer ")
+				if headerToken == activeToken {
+					authenticated = true
+				}
+			}
+		}
+
+		// Mechanism C: Session cookie
+		if !authenticated {
+			if cookie, err := r.Cookie("ra_session_token"); err == nil {
+				if cookie.Value == activeToken {
+					authenticated = true
+				}
+			}
+		}
+
+		// 3. Reject unauthorized requests with a clean 401 response
+		if !authenticated {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error": "Unauthorized: Ephemeral session token required. Please scan the authorized QR code or click the secure link."}`))
+			return
+		}
+
+		// 4. Authorized, proceed to the requested route
+		next.ServeHTTP(w, r)
+	})
+}
+

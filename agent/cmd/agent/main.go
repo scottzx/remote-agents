@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/scottzx/remote-agents/agent/internal/config"
 	"github.com/scottzx/remote-agents/agent/internal/server"
 	"github.com/scottzx/remote-agents/agent/internal/supervisor"
+	"github.com/scottzx/remote-agents/agent/internal/tunnel"
 )
 
 func main() {
@@ -47,6 +49,7 @@ func main() {
 	flag.BoolVar(&enableSSL, "ssl", false, "Enable HTTPS/SSL with auto-generated certificates if none exist")
 	flag.StringVar(&sslCert, "ssl-cert", "", "Path to the SSL certificate for HTTPS")
 	flag.StringVar(&sslKey, "ssl-key", "", "Path to the SSL private key for HTTPS")
+	flag.BoolVar(&cfg.EnableTunnel, "tunnel", false, "Enable on-demand public Web Tunnel via Cloudflare on startup")
 
 	flag.Parse()
 
@@ -138,6 +141,28 @@ func main() {
 			}
 		}
 
+		if cfg.EnableTunnel {
+			go func() {
+				time.Sleep(500 * time.Millisecond) // Let the server bind to the port first
+				log.Println("[main] --tunnel flag passed on boot. Initializing secure public Web Tunnel...")
+				port := tunnel.PortFrom(cfg.ListenAddr)
+				
+				publicURL, token, err := tunnel.DefaultSupervisor.Start(port)
+				if err != nil {
+					log.Printf("[main] ERROR: Failed to start public Web Tunnel: %v", err)
+					return
+				}
+
+				fmt.Println("\n==================================================================")
+				fmt.Println("🚀 REMOTE AGENT PUBLIC TUNNEL IS ACTIVE!")
+				fmt.Printf("🔗 Secure Link: %s/?token=%s\n", publicURL, token)
+				fmt.Println("==================================================================")
+				fmt.Println("[main] Scan the high-contrast QR code below to connect instantly:")
+				
+				tunnel.RenderTerminalQR(fmt.Sprintf("%s/?token=%s", publicURL, token))
+			}()
+		}
+
 		if sslCert != "" && sslKey != "" {
 			log.Printf("[main] HTTPS / SSL enabled (using cert: %s)", sslCert)
 			err = httpServer.ListenAndServeTLS(sslCert, sslKey)
@@ -155,6 +180,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	log.Printf("[main] Received signal %s, shutting down gracefully...", sig)
+
+	// Stop public tunnel if active
+	_ = tunnel.DefaultSupervisor.Stop()
 
 	cancel()
 

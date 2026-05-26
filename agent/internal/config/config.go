@@ -41,6 +41,12 @@ type Config struct {
 	// MaxRestarts is the maximum number of consecutive restarts allowed.
 	// Once exceeded, the supervisor gives up to prevent infinite loops.
 	MaxRestarts int
+
+	// EnableTunnel determines if the public tunnel is automatically started on boot.
+	EnableTunnel bool
+
+	// TunnelToken stores the active session authentication token in memory.
+	TunnelToken string
 }
 
 // Default returns a Config populated with safe default values.
