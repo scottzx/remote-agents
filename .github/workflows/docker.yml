@@ -13,6 +13,29 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            html/.yarn/cache
+            html/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ hashFiles('html/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Install and Build Frontend
+        working-directory: html
+        run: |
+          corepack enable
+          yarn install
+          yarn build
+
       - name: Install packages
         run: |
           sudo apt-get update
