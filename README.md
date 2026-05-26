@@ -32,6 +32,10 @@
   - 深度集成 [cc-connect](https://github.com/scottzx/cc-connect) 模块，支持将工作区动态注册为项目。
   - 通过反向代理，实现与飞书、Telegram、Discord、Slack 等主流平台的无缝双向消息通信。
   - 智能体与远程控制台主题、语言等配置多维无缝同步。
+- 🌐 **极简公网安全通道 (On-Demand Web Tunnel)**：
+  - **一键极速发布**：支持通过 `--tunnel` 选项在启动时自动拉起安全公网隧道，或直接通过 `cc-connect` 智能体对话拉起临时公网地址，免去任何路由器端口映射、防火墙或公网 IP 配置。
+  - **云端免安装/极速体验**：Go 后端智能感知，若本地无 `cloudflared`，将以极佳的实时进度日志自动安全拉取下载（约 30MB，国外 2~5 秒，国内 15~30 秒，二次启动 0.1 秒秒开）；若系统已有安装（如 Homebrew），则闪电复用、直接秒开。
+  - **动态安全认证**：自动生成高强度动态会话 Token 并支持终端渲染高对比度二维码，移动端扫码即连。
 
 ---
 
@@ -50,6 +54,7 @@
 6. **🚀 并行加载与启动优化**：优化了组件的并发初始化逻辑，工作区与终端会话实现并行异步加载，大幅缩短首屏白屏时间，并支持智能记忆/默认工作区选择。
 7. **🤖 CC-Connect 跨域/反向代理升级**：支持工作区动态项目注册和 API POST 请求语言/主题同步，极大提升了 iframe 嵌入的整体感。
 8. **📦 自动化 NPM 发布与 Node 24 适配**：推出了 multi-platform release CI/CD 自动化构建与统一的 NPM 包装包 `@scottzx/remote-agents`。适配了最新的 Node 24 运行环境，并优化了 Github Actions 上的 Yarn 3 缓存。
+9. **🌐 按需公网 Web 隧道与智能下载优化**：新增 `--tunnel` 启动参数与 cc-connect 聊天智能唤醒，支持在无公网 IP/无证书环境下瞬间发布临时互联网安全访问链接；内置 Go 自动下载云端引擎（带有细致的进度百分比展示与系统级 `PATH` 智能复用），首次拉起极速自动适配，二次闪电秒开。
 
 ---
 
@@ -140,6 +145,7 @@ remote-agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
 | `-ttyd-addr` | `string` | `"127.0.0.1:7681"`| 内置 ttyd 与 Go 守护进程的本地通信回环地址 |
 | `-restart-delay`| `duration` | `"3s"` | 当 ttyd 意外退出后，守护进程尝试自动重新拉起的等待间隔 |
 | `-max-restarts` | `int` | `5` | 最大连续异常重启 ttyd 进程的上限次数，防止循环崩溃锁死 |
+| `-tunnel` | `bool` | `false` | 是否开启基于 Cloudflare 的按需安全公网隧道 (Web Tunnel)，启动时自动输出公网链接与二维码 |
 
 ---
 
@@ -172,6 +178,34 @@ remote-agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
 - **Chrome / Edge 的 Network 报错**：由于 Chrome/Edge 的 Web Speech 强依赖于 Google 云端服务器解析，若国内网络未配置全局系统代理，会报 `Speech recognition error: network`。
 - **移动端 (手机/平板)**：强制要求使用 HTTPS 协议，否则网页端无法申请麦克风录音权限。
 - *(更多细节请查阅：[语音识别与麦克风权限兼容性指南](docs/tips/voice-recognition.md))*
+
+### 3. 免配置公网安全隧道 (Cloudflare Tunnel & cc-connect 智能拉起)
+
+当您在**无公网 IP、无证书配置且处于复杂内网环境**（例如居家宽带、公司内网、咖啡厅 Wi-Fi）中时，`Remote Agents` 提供了最极致的“零配置公网访问”方案。
+
+#### 💡 工作原理与首次下载体验
+当您在启动命令中加上 `-tunnel` 参数，例如：
+```bash
+remote-agents -tunnel
+```
+系统会触发按需公网通道的智能拉起流程：
+1. **环境变量优先复用（智能跳过）**：
+   Go 后端在拉起前会智能检测系统环境。如果您的系统中已经安装过 `cloudflared`（例如 macOS 用户通过 `brew install` 安装，或 Linux 用户使用 `apt` 安装），Go 后端会**瞬间识别并直接复用**系统已有程序，**实现 0.1 秒闪电启动，首次运行也完全无需下载**！
+2. **一次性自动下载（进度日志完全可见）**：
+   如果您的系统没有任何 `cloudflared` 缓存，Go 后端会从 GitHub Releases 官方源执行一次性安全下载（文件大小约为 30MB）。为防止出现“程序卡死”的疑虑，控制台会**实时打印下载进度日志**：
+   ```text
+   [tunnel] cloudflared not found in PATH or local bin. Starting automatic download...
+   [tunnel] Downloading cloudflared binary from: https://github.com/...
+   [tunnel] Successfully downloaded and installed cloudflared to: ~/.remote-agents/bin/cloudflared
+   ```
+   - **海外网络/高速宽带**：下载 30MB 仅需 **2 ~ 5 秒**，直接输出二维码。
+   - **国内普通网络**：受 GitHub 国际带宽限制，下载时间约 **15 ~ 30 秒**。
+   - **二次运行**：本地已缓存，**启动速度为 0.1 秒，瞬间秒开**！
+3. **高强度动态安全认证**：
+   公网隧道启动后，会自动生成高强度的单次会话 Token，并在终端控制台直接渲染**高对比度连接二维码**，手机/平板只需扫码即可直接通过互联网安全通道秒连！
+
+#### 🤖 CC-Connect 智能体对话拉起 (极致低门槛)
+更进一步，如果您启用了 [cc-connect](https://github.com/scottzx/cc-connect)，您甚至连命令行都不需要接触。**只需在飞书、Telegram、Slack 或微信等聊天软件中向您的 CC-Connect 智能体发送一句对话（如“帮我拉起远程工作台”或“开启公网访问”），智能体就会在后台自动完成上述下载与拉起流程，并在聊天窗口中为您返回一个临时的、互联网端可直接访问的安全加密 URL 链接。**
 
 ---
 
