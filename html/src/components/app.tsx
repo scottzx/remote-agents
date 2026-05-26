@@ -1469,6 +1469,8 @@ export class App extends Component<{}, AppState> {
                             flowControl={flowControl}
                             onMobileDetect={isMobile => this.setState({ isMobile })}
                             onKeyboardStateChange={this.handleKeyboardStateChange}
+                            tmuxMouseOn={tmuxMouseOn}
+                            onTmuxMouseToggle={this.toggleTmuxMouse}
                         />
 
                         {/* Resizer: between MIDDLE canvas and RIGHT panel */}

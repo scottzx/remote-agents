@@ -9,6 +9,8 @@ interface Props extends XtermOptions {
     id: string;
     onMobileDetect?: (isMobile: boolean) => void;
     onKeyboardStateChange?: (visible: boolean) => void;
+    tmuxMouseOn?: boolean;
+    onTmuxMouseToggle?: () => void;
 }
 
 interface SpeechResultEvent {
@@ -699,6 +701,24 @@ export class Terminal extends Component<Props, State> {
                                 >
                                     <polyline points="9 10 4 15 9 20" />
                                     <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+                                </svg>
+                            </button>
+                            {/* Tmux Mouse Toggle (Scroll vs Select Mode) */}
+                            <button
+                                class={`key-btn key-btn-mouse ${this.props.tmuxMouseOn ? 'active' : ''}`}
+                                title={this.props.tmuxMouseOn ? '当前：滚轮滑动模式' : '当前：选择复制模式'}
+                                onClick={this.props.onTmuxMouseToggle}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect x="5" y="2" width="14" height="20" rx="7" />
+                                    <path d="M12 6v4" />
                                 </svg>
                             </button>
                         </div>

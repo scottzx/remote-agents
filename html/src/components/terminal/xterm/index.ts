@@ -96,6 +96,7 @@ export class Xterm {
     private socket?: WebSocket;
     private token: string;
     private opened = false;
+    private heartbeatInterval?: number;
     private title?: string;
     private titleFixed?: string;
     private resizeOverlay = true;
@@ -115,6 +116,10 @@ export class Xterm {
             d.dispose();
         }
         this.disposables.length = 0;
+        if (this.heartbeatInterval) {
+            window.clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = undefined;
+        }
     }
 
     @bind
@@ -223,7 +228,15 @@ export class Xterm {
                 this.overlayAddon?.showOverlay('\u2702', 200);
             })
         );
-        register(addEventListener(window, 'resize', () => fitAddon.fit()));
+        let resizeTimeout: number;
+        register(
+            addEventListener(window, 'resize', () => {
+                window.clearTimeout(resizeTimeout);
+                resizeTimeout = window.setTimeout(() => {
+                    fitAddon.fit();
+                }, 100);
+            })
+        );
         register(addEventListener(window, 'beforeunload', this.onWindowUnload));
     }
 
@@ -288,6 +301,11 @@ export class Xterm {
         const msg = JSON.stringify({ AuthToken: this.token, columns: terminal.cols, rows: terminal.rows });
         this.socket?.send(textEncoder.encode(msg));
 
+        if (this.heartbeatInterval) window.clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = window.setInterval(() => {
+            this.sendHeartbeat();
+        }, 15000);
+
         if (this.opened) {
             terminal.reset();
             terminal.options.disableStdin = false;
@@ -306,6 +324,10 @@ export class Xterm {
         console.log(`[ttyd] websocket connection closed with code: ${event.code}`);
 
         const { refreshToken, connect, doReconnect, overlayAddon } = this;
+        if (this.heartbeatInterval) {
+            window.clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = undefined;
+        }
         overlayAddon.showOverlay('Connection Closed');
         this.dispose();
 
@@ -388,6 +410,18 @@ export class Xterm {
             default:
                 console.warn(`[ttyd] unknown command: ${cmd}`);
                 break;
+        }
+    }
+
+    @bind
+    private sendHeartbeat() {
+        const { socket, textEncoder } = this;
+        if (socket?.readyState !== WebSocket.OPEN) return;
+        try {
+            socket.send(textEncoder.encode('h'));
+        } catch (e) {
+            console.error('[ttyd] failed to send heartbeat ping:', e);
+            socket.close();
         }
     }
 
@@ -529,7 +563,9 @@ export class Xterm {
             disposeCanvasRenderer();
             try {
                 this.webglAddon.onContextLoss(() => {
-                    this.webglAddon?.dispose();
+                    console.log('[ttyd] WebGL context lost, falling back to canvas renderer');
+                    disposeWebglRenderer();
+                    enableCanvasRenderer();
                 });
                 terminal.loadAddon(this.webglAddon);
                 console.log('[ttyd] WebGL renderer loaded');
