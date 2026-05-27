@@ -20,12 +20,14 @@ import (
 // npmPackageName is the canonical NPM package for this agent.
 const npmPackageName = "@scottzx/remote-agents"
 
-// updateState tracks the OTA update status.
+// ── Update state tracker ──────────────────────────────────────────────────────
+
 type updateState struct {
-	mu        sync.RWMutex
-	running   bool
-	startedAt time.Time
-	log       []string
+	mu          sync.RWMutex
+	running     bool
+	startedAt   time.Time
+	restartMode string // "systemd" | "exec" | "manual"
+	log         []string
 }
 
 var state = &updateState{}
@@ -39,6 +41,7 @@ func (s *updateState) start() bool {
 	s.running = true
 	s.startedAt = time.Now()
 	s.log = nil
+	s.restartMode = ""
 	return true
 }
 
@@ -57,36 +60,40 @@ func (s *updateState) appendLog(line string) {
 	}
 }
 
-func (s *updateState) snapshot() (bool, time.Time, []string) {
+func (s *updateState) setRestartMode(mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.restartMode = mode
+}
+
+func (s *updateState) snapshot() (bool, time.Time, string, []string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	logs := make([]string, len(s.log))
 	copy(logs, s.log)
-	return s.running, s.startedAt, logs
+	return s.running, s.startedAt, s.restartMode, logs
 }
+
+// ── Version info ──────────────────────────────────────────────────────────────
 
 // VersionInfo holds the local and remote version details.
 type VersionInfo struct {
-	Current string `json:"current"`          // local installed version
-	Latest  string `json:"latest"`           // latest on NPM registry
-	HasUpdate bool `json:"has_update"`       // latest > current
-	Package string `json:"package"`          // npm package name
-	UpdateMode string `json:"update_mode"`  // "online" | "offline"
+	Current     string `json:"current"`      // local installed version
+	Latest      string `json:"latest"`       // latest on NPM registry
+	HasUpdate   bool   `json:"has_update"`   // latest > current
+	Package     string `json:"package"`      // npm package name
+	RestartMode string `json:"restart_mode"` // how OTA will restart: "systemd" | "exec" | "manual"
 }
 
 // getLocalVersion reads the installed version from the npm package's package.json.
 func getLocalVersion() string {
-	// Walk candidate paths for the installed package.json.
-	// When run via `npm install -g`, the package ends up in the global node_modules.
 	candidates := []string{}
 
-	// Check via `npm root -g`
 	if out, err := exec.Command("npm", "root", "-g").Output(); err == nil {
 		root := strings.TrimSpace(string(out))
 		candidates = append(candidates, filepath.Join(root, npmPackageName, "package.json"))
 	}
 
-	// Fallback: walk from the binary's own directory upward
 	exe, _ := os.Executable()
 	if exe != "" {
 		dir := filepath.Dir(exe)
@@ -113,35 +120,86 @@ func getLocalVersion() string {
 
 // getLatestVersion queries the NPM registry for the latest published version.
 func getLatestVersion() (string, error) {
-	url := fmt.Sprintf("https://registry.npmjs.org/%s/latest", npmPackageName)
 	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		// Try npmmirror as fallback
-		url2 := fmt.Sprintf("https://registry.npmmirror.com/%s/latest", npmPackageName)
-		resp, err = client.Get(url2)
+
+	urls := []string{
+		fmt.Sprintf("https://registry.npmjs.org/%s/latest", npmPackageName),
+		fmt.Sprintf("https://registry.npmmirror.com/%s/latest", npmPackageName),
+	}
+
+	for _, url := range urls {
+		resp, err := client.Get(url)
 		if err != nil {
-			return "", fmt.Errorf("registry unreachable: %w", err)
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		resp.Body.Close()
+		var meta struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(body, &meta); err == nil && meta.Version != "" {
+			return meta.Version, nil
 		}
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	var meta struct {
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(body, &meta); err != nil || meta.Version == "" {
-		return "", fmt.Errorf("failed to parse registry response")
-	}
-	return meta.Version, nil
+	return "", fmt.Errorf("all registries unreachable")
 }
 
-// versionGT returns true if a > b using simple semver comparison.
+// versionGT returns true if a > b (lexicographic, sufficient for date-based versions).
 func versionGT(a, b string) bool {
-	if a == b || a == "" || b == "unknown" {
-		return false
-	}
-	return a > b // lexicographic approximation, sufficient for date-based versions like 20260526.2.0
+	return a != "" && b != "" && b != "unknown" && a > b
 }
+
+// ── Restart mode detection ────────────────────────────────────────────────────
+
+// restartMode describes how the service will be restarted after OTA update.
+type restartMode int
+
+const (
+	restartSystemd restartMode = iota // Linux: systemctl restart <unit>
+	restartExec                       // Unix: syscall.Exec — in-place binary replacement
+	restartManual                     // Windows or unknown: user must restart manually
+)
+
+func detectRestartMode() (restartMode, string) {
+	// 1. Linux + systemd
+	if runtime.GOOS == "linux" {
+		if unit := detectSystemdUnit(); unit != "" {
+			return restartSystemd, unit
+		}
+	}
+
+	// 2. Unix (macOS, Linux without systemd, *BSD): exec restart
+	if canExecRestart() {
+		return restartExec, ""
+	}
+
+	// 3. Other (Windows): manual
+	return restartManual, ""
+}
+
+func restartModeName(m restartMode) string {
+	switch m {
+	case restartSystemd:
+		return "systemd"
+	case restartExec:
+		return "exec"
+	default:
+		return "manual"
+	}
+}
+
+// detectSystemdUnit checks for a running remote-agents systemd unit.
+func detectSystemdUnit() string {
+	for _, unit := range []string{"remote-agents", "remote-agents.service"} {
+		out, err := exec.Command("systemctl", "is-active", unit).Output()
+		if err == nil && strings.TrimSpace(string(out)) == "active" {
+			return unit
+		}
+	}
+	return ""
+}
+
+// ── HTTP Handlers ─────────────────────────────────────────────────────────────
 
 // NewHandler creates the HTTP handler for /api/system/* routes.
 func NewHandler() *Handler {
@@ -152,7 +210,6 @@ func NewHandler() *Handler {
 type Handler struct{}
 
 // Version handles GET /api/system/version
-// Returns current + latest version, and whether an update is available.
 func (h *Handler) Version(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -166,15 +223,18 @@ func (h *Handler) Version(w http.ResponseWriter, r *http.Request) {
 		hasUpdate = versionGT(latest, current)
 	}
 
+	mode, _ := detectRestartMode()
+
 	info := VersionInfo{
-		Current:    current,
-		Latest:     latest,
-		HasUpdate:  hasUpdate,
-		Package:    npmPackageName,
-		UpdateMode: "online",
+		Current:     current,
+		Package:     npmPackageName,
+		HasUpdate:   hasUpdate,
+		RestartMode: restartModeName(mode),
 	}
 	if err != nil {
 		info.Latest = "unavailable"
+	} else {
+		info.Latest = latest
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -182,33 +242,31 @@ func (h *Handler) Version(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateStatus handles GET /api/system/update/status
-// Returns the current OTA update progress.
 func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	running, startedAt, logs := state.snapshot()
+	running, startedAt, mode, logs := state.snapshot()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"running":    running,
-		"started_at": startedAt,
-		"log":        logs,
+		"running":      running,
+		"started_at":   startedAt,
+		"restart_mode": mode,
+		"log":          logs,
 	})
 }
 
 // Update handles POST /api/system/update
-// Triggers an OTA self-update in a fully detached background process.
-// Returns immediately with 202 Accepted so the caller is not blocked.
+// Body (optional): {"version":"20260526.2.0"}
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Allow explicit version pinning via JSON body: {"version":"20260526.2.0"}
 	var body struct {
 		Version string `json:"version"`
 	}
@@ -230,44 +288,51 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		pkgTarget = npmPackageName + "@" + body.Version
 	}
 
-	go runDetachedUpdate(pkgTarget)
+	mode, extra := detectRestartMode()
+	state.setRestartMode(restartModeName(mode))
+
+	go runUpdate(pkgTarget, mode, extra)
+
+	msg := "OTA update launched. Service will restart automatically when done."
+	if mode == restartManual {
+		msg = "OTA update launched. npm install will complete, but you must restart the service manually (no system supervisor detected)."
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "update_started",
-		"package": pkgTarget,
-		"message": "OTA update has been launched in the background. The service will restart automatically upon completion. Poll /api/system/update/status to track progress.",
+		"status":       "update_started",
+		"package":      pkgTarget,
+		"restart_mode": restartModeName(mode),
+		"message":      msg,
 	})
 }
 
-// runDetachedUpdate performs the NPM install and systemd restart in a background goroutine.
-// The parent HTTP server remains live throughout; the new binary is started by systemd
-// only after the old one exits cleanly via `systemctl restart`.
-func runDetachedUpdate(pkgTarget string) {
+// ── OTA update background worker ─────────────────────────────────────────────
+
+func runUpdate(pkgTarget string, mode restartMode, extra string) {
 	defer state.finish()
 
+	ts := func() string { return time.Now().Format("15:04:05") }
 	appendLog := func(format string, args ...interface{}) {
-		line := fmt.Sprintf("[%s] "+format, append([]interface{}{time.Now().Format("15:04:05")}, args...)...)
+		line := fmt.Sprintf("[%s] "+format, append([]interface{}{ts()}, args...)...)
 		state.appendLog(line)
-		log.Println("[system/ota]", strings.TrimPrefix(line, fmt.Sprintf("[%s] ", time.Now().Format("15:04:05"))))
+		log.Printf("[system/ota] %s", fmt.Sprintf(format, args...))
 	}
 
-	appendLog("Starting OTA update: %s", pkgTarget)
+	appendLog("=== OTA update started ===")
+	appendLog("Package: %s", pkgTarget)
+	appendLog("Restart strategy: %s", restartModeName(mode))
 
-	// ── Step 1: npm install -g <package>@<version> ────────────────────────────
-	npmCmd := "npm"
-	npmArgs := []string{"install", "-g", pkgTarget}
+	// ── Step 1: npm install -g ────────────────────────────────────────────────
+	appendLog("Running: npm install -g %s", pkgTarget)
 
-	appendLog("Running: %s %s", npmCmd, strings.Join(npmArgs, " "))
-
-	cmd := exec.Command(npmCmd, npmArgs...)
+	cmd := exec.Command("npm", "install", "-g", pkgTarget)
 	cmd.Env = append(os.Environ(), "NPM_CONFIG_PROGRESS=false")
 
-	// Capture combined stdout+stderr and stream to our state log
 	pr, pw, err := os.Pipe()
 	if err != nil {
-		appendLog("ERROR: failed to create pipe: %v", err)
+		appendLog("ERROR: pipe: %v", err)
 		return
 	}
 	cmd.Stdout = pw
@@ -276,19 +341,19 @@ func runDetachedUpdate(pkgTarget string) {
 	if err := cmd.Start(); err != nil {
 		pw.Close()
 		pr.Close()
-		appendLog("ERROR: failed to start npm: %v", err)
+		appendLog("ERROR: npm start: %v", err)
+		appendLog("HINT: Make sure 'npm' is in your PATH. Current PATH: %s", os.Getenv("PATH"))
 		return
 	}
 
-	// Stream npm output
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := pr.Read(buf)
 			if n > 0 {
 				for _, line := range strings.Split(strings.TrimRight(string(buf[:n]), "\n"), "\n") {
-					if line = strings.TrimSpace(line); line != "" {
-						state.appendLog(line)
+					if l := strings.TrimSpace(line); l != "" {
+						state.appendLog(l)
 					}
 				}
 			}
@@ -302,54 +367,64 @@ func runDetachedUpdate(pkgTarget string) {
 		pw.Close()
 		pr.Close()
 		appendLog("ERROR: npm install failed: %v", err)
+		if os.Getuid() != 0 {
+			appendLog("HINT: If permission denied, your npm global directory may be owned by root.")
+			appendLog("      Try: sudo chown -R $(whoami) $(npm root -g)/..")
+		}
 		return
 	}
 	pw.Close()
 	pr.Close()
-
 	appendLog("npm install completed successfully.")
 
-	// ── Step 2: Restart via systemd (Linux) or graceful self-exit (other) ────
-	if runtime.GOOS == "linux" {
-		// Check if we are running under a known systemd unit
-		unitName := detectSystemdUnit()
-		if unitName != "" {
-			appendLog("Restarting systemd unit: %s", unitName)
-			// Use a fully independent subprocess so we survive the restart
-			restartCmd := exec.Command("systemctl", "restart", unitName)
-			restartCmd.SysProcAttr = detachSysProcAttr()
-			if err := restartCmd.Start(); err != nil {
-				appendLog("ERROR: systemctl restart failed: %v. Manual restart may be required.", err)
-			} else {
-				appendLog("systemctl restart issued. Service will restart momentarily.")
-			}
-			return
+	// ── Step 2: Restart ───────────────────────────────────────────────────────
+	switch mode {
+	case restartSystemd:
+		appendLog("Restarting via systemd: %s", extra)
+		restartCmd := exec.Command("systemctl", "restart", extra)
+		restartCmd.SysProcAttr = detachSysProcAttr()
+		if err := restartCmd.Start(); err != nil {
+			appendLog("ERROR: systemctl restart failed: %v", err)
+			appendLog("You may need to restart manually: systemctl restart %s", extra)
+		} else {
+			appendLog("systemctl restart issued. Service will be back in ~5 seconds.")
 		}
-	}
 
-	// Fallback for non-Linux or non-systemd: ask the process to gracefully exit.
-	// The process supervisor (e.g. Docker restart policy, pm2) will relaunch with the new binary.
-	appendLog("Not running under systemd. Sending SIGTERM for graceful restart...")
-	proc, err := os.FindProcess(os.Getpid())
-	if err == nil {
-		time.Sleep(500 * time.Millisecond) // flush log
-		_ = proc.Signal(os.Interrupt)
+	case restartExec:
+		// Find the new binary path from npm global bin
+		newBin := findNpmGlobalBin("remote-agents")
+		appendLog("In-place restart (exec): replacing process with %s", newBin)
+		appendLog("Connection will drop briefly — the service restarts with the same arguments.")
+
+		// Small delay so this log line reaches the client before the process is replaced
+		time.Sleep(800 * time.Millisecond)
+
+		if err := execRestart(newBin); err != nil {
+			// execRestart only returns on failure
+			appendLog("ERROR: exec restart failed: %v", err)
+			appendLog("Please restart the service manually.")
+		}
+
+	case restartManual:
+		appendLog("=== Update complete ===")
+		appendLog("No system supervisor detected (not systemd, not Unix exec).")
+		appendLog("Please restart the service manually to apply the update.")
 	}
 }
 
-// detectSystemdUnit checks the INVOCATION_ID or SYSTEMD_EXEC_PID env vars
-// to determine the active systemd unit name.
-func detectSystemdUnit() string {
-	// Check well-known unit names
-	candidates := []string{
-		"remote-agents",
-		"remote-agents.service",
-	}
-	for _, unit := range candidates {
-		out, err := exec.Command("systemctl", "is-active", unit).Output()
-		if err == nil && strings.TrimSpace(string(out)) == "active" {
-			return unit
+// findNpmGlobalBin returns the path to a binary installed in the npm global bin directory.
+func findNpmGlobalBin(name string) string {
+	// Try `npm bin -g` first
+	if out, err := exec.Command("npm", "bin", "-g").Output(); err == nil {
+		binDir := strings.TrimSpace(string(out))
+		candidate := filepath.Join(binDir, name)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
 		}
 	}
-	return ""
+	// Fallback: use PATH resolution
+	if path, err := exec.LookPath(name); err == nil {
+		return path
+	}
+	return name
 }
