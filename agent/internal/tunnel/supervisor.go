@@ -16,10 +16,11 @@ import (
 
 // TunnelInfo holds the public state of one active tunnel.
 type TunnelInfo struct {
-	Port  string `json:"port"`
-	URL   string `json:"url"`
-	Token string `json:"token"`
-	Link  string `json:"link"`
+	Port        string `json:"port"`
+	URL         string `json:"url"`
+	Token       string `json:"token"`
+	Link        string `json:"link"`
+	IdleSeconds int    `json:"idle_seconds"` // seconds remaining before auto-stop (0 = never)
 }
 
 type tunnelInstance struct {
@@ -27,6 +28,7 @@ type tunnelInstance struct {
 	publicURL   string
 	token       string
 	lastAccess  time.Time
+	idleTimeout time.Duration // 0 = never timeout
 	stopMonitor chan struct{}
 }
 
@@ -34,8 +36,8 @@ type tunnelInstance struct {
 // Multiple tunnels can run concurrently, each exposing a different local port.
 type TunnelSupervisor struct {
 	mu          sync.Mutex
-	tunnels     map[string]*tunnelInstance // keyed by local port string, e.g. "8080"
-	idleTimeout time.Duration
+	tunnels     map[string]*tunnelInstance // keyed by local port string
+	idleTimeout time.Duration              // global default, used when per-tunnel timeout is 0
 }
 
 // Global instance to allow access from HTTP server handlers.
@@ -50,7 +52,7 @@ func GenerateRandomToken() string {
 	return hex.EncodeToString(b)
 }
 
-// SetIdleTimeout configures the inactivity timeout before a tunnel auto-stops.
+// SetIdleTimeout configures the global default inactivity timeout.
 func (s *TunnelSupervisor) SetIdleTimeout(d time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -58,8 +60,8 @@ func (s *TunnelSupervisor) SetIdleTimeout(d time.Duration) {
 }
 
 // Start launches a cloudflared quick tunnel for the given local port.
-// Returns the existing tunnel info if one is already active for that port.
-func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {
+// timeoutMinutes: 0 = use global default, -1 = never timeout, >0 = override.
+func (s *TunnelSupervisor) Start(localPort string, timeoutMinutes int) (string, string, error) {
 	s.mu.Lock()
 	if inst, ok := s.tunnels[localPort]; ok {
 		url, token := inst.publicURL, inst.token
@@ -114,21 +116,25 @@ func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {
 
 	select {
 	case url := <-urlChan:
+		s.mu.Lock()
+		instTimeout := s.resolveTimeout(timeoutMinutes)
+		s.mu.Unlock()
+
 		inst := &tunnelInstance{
-			cmd:        cmd,
-			publicURL:  url,
-			token:      token,
-			lastAccess: time.Now(),
+			cmd:         cmd,
+			publicURL:   url,
+			token:       token,
+			lastAccess:  time.Now(),
+			idleTimeout: instTimeout,
 		}
 
 		s.mu.Lock()
 		s.tunnels[localPort] = inst
-		timeout := s.idleTimeout
 		s.mu.Unlock()
 
-		log.Printf("[tunnel:%s] Cloudflare tunnel established: %s", localPort, url)
+		log.Printf("[tunnel:%s] Cloudflare tunnel established: %s (idle timeout: %v)", localPort, url, instTimeout)
 
-		if timeout > 0 {
+		if instTimeout > 0 {
 			inst.stopMonitor = make(chan struct{})
 			go s.idleMonitor(localPort, inst, inst.stopMonitor)
 		}
@@ -143,6 +149,17 @@ func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {
 		_ = cmd.Process.Kill()
 		return "", "", fmt.Errorf("timeout waiting for tunnel to establish")
 	}
+}
+
+// resolveTimeout returns the effective timeout for a new tunnel.
+func (s *TunnelSupervisor) resolveTimeout(minutes int) time.Duration {
+	if minutes < 0 {
+		return 0 // never timeout
+	}
+	if minutes > 0 {
+		return time.Duration(minutes) * time.Minute
+	}
+	return s.idleTimeout // use global default
 }
 
 // Stop terminates the cloudflared tunnel for the given local port.
@@ -185,12 +202,19 @@ func (s *TunnelSupervisor) ListAll() []TunnelInfo {
 
 	result := make([]TunnelInfo, 0, len(s.tunnels))
 	for port, inst := range s.tunnels {
-		result = append(result, TunnelInfo{
+		info := TunnelInfo{
 			Port:  port,
 			URL:   inst.publicURL,
 			Token: inst.token,
 			Link:  fmt.Sprintf("%s/?token=%s", inst.publicURL, inst.token),
-		})
+		}
+		if inst.idleTimeout > 0 {
+			remaining := inst.idleTimeout - time.Since(inst.lastAccess)
+			if remaining > 0 {
+				info.IdleSeconds = int(remaining.Seconds())
+			}
+		}
+		result = append(result, info)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Port < result[j].Port })
 	return result
@@ -254,7 +278,6 @@ func (s *TunnelSupervisor) idleMonitor(port string, inst *tunnelInstance, stop c
 			return
 		case <-ticker.C:
 			s.mu.Lock()
-			timeout := s.idleTimeout
 			_, stillTracked := s.tunnels[port]
 			s.mu.Unlock()
 
@@ -262,7 +285,7 @@ func (s *TunnelSupervisor) idleMonitor(port string, inst *tunnelInstance, stop c
 				return
 			}
 
-			if time.Since(inst.lastAccess) > timeout {
+			if time.Since(inst.lastAccess) > inst.idleTimeout {
 				log.Printf("[tunnel:%s] Idle timeout reached (%.0f min). Auto-stopping.", port, time.Since(inst.lastAccess).Minutes())
 				s.mu.Lock()
 				delete(s.tunnels, port)

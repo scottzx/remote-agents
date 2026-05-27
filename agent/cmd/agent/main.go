@@ -65,13 +65,17 @@ func main() {
 	if flag.NArg() > 0 && flag.Arg(0) == "tunnel" {
 		cmd := ""
 		port := ""
+		timeout := ""
 		if flag.NArg() >= 2 {
 			cmd = flag.Arg(1)
 		}
 		if flag.NArg() >= 3 {
 			port = flag.Arg(2)
 		}
-		handleTunnelCommand(cmd, port)
+		if flag.NArg() >= 4 {
+			timeout = flag.Arg(3)
+		}
+		handleTunnelCommand(cmd, port, timeout)
 		return
 	}
 
@@ -170,7 +174,7 @@ func main() {
 				log.Println("[main] --tunnel flag passed on boot. Initializing secure public Web Tunnel...")
 				port := tunnel.PortFrom(cfg.ListenAddr)
 				
-				publicURL, token, err := tunnel.DefaultSupervisor.Start(port)
+				publicURL, token, err := tunnel.DefaultSupervisor.Start(port, 0)
 				if err != nil {
 					log.Printf("[main] ERROR: Failed to start public Web Tunnel: %v", err)
 					return

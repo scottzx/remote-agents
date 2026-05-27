@@ -186,6 +186,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 		return tunnel.PortFrom(cfg.ListenAddr)
 	}
 
+	resolveTimeout := func(r *http.Request) int {
+		t := r.URL.Query().Get("timeout")
+		if t == "" {
+			return 0
+		}
+		var mins int
+		fmt.Sscanf(t, "%d", &mins)
+		return mins
+	}
+
 	mux.HandleFunc("/api/tunnel/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -197,7 +207,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 		}
 
 		port := resolvePort(r)
-		publicURL, token, err := tunnel.DefaultSupervisor.Start(port)
+		timeout := resolveTimeout(r)
+		publicURL, token, err := tunnel.DefaultSupervisor.Start(port, timeout)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusInternalServerError)

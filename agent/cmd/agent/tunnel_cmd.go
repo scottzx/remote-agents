@@ -53,7 +53,7 @@ func readDaemonListenAddr() string {
 	return info.ListenAddr
 }
 
-func handleTunnelCommand(cmd string, port string) {
+func handleTunnelCommand(cmd string, port string, timeout string) {
 	listenAddr := readDaemonListenAddr()
 	token, err := readManagementToken()
 	if err != nil {
@@ -68,7 +68,7 @@ func handleTunnelCommand(cmd string, port string) {
 
 	switch cmd {
 	case "start":
-		startTunnel(client, baseURL, authHeader, port)
+		startTunnel(client, baseURL, authHeader, port, timeout)
 
 	case "stop":
 		if port == "" {
@@ -87,20 +87,29 @@ func handleTunnelCommand(cmd string, port string) {
 		showTunnelStatus(client, baseURL)
 
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: remote-agents tunnel <start|stop|stop-all|status> [port]\n")
+		fmt.Fprintf(os.Stderr, "Usage: remote-agents tunnel <start|stop|stop-all|status> [port] [timeout]\n")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  start [port]   Start a tunnel (defaults to daemon port)")
-		fmt.Fprintln(os.Stderr, "  stop <port>    Stop the tunnel for the given local port")
-		fmt.Fprintln(os.Stderr, "  stop-all       Stop all active tunnels")
-		fmt.Fprintln(os.Stderr, "  status         List all active tunnels")
+		fmt.Fprintln(os.Stderr, "  start [port] [timeout]  Start a tunnel")
+		fmt.Fprintln(os.Stderr, "    port     Local port to expose (default: daemon port)")
+		fmt.Fprintln(os.Stderr, "    timeout  Idle timeout in minutes (0=default, -1=never)")
+		fmt.Fprintln(os.Stderr, "  stop <port>             Stop the tunnel for a specific port")
+		fmt.Fprintln(os.Stderr, "  stop-all                Stop all active tunnels")
+		fmt.Fprintln(os.Stderr, "  status                  List all active tunnels with idle time")
 		os.Exit(1)
 	}
 }
 
-func startTunnel(client *http.Client, baseURL, authHeader, port string) {
-	reqURL := baseURL + "/api/tunnel/start"
+func startTunnel(client *http.Client, baseURL, authHeader, port, timeout string) {
+	params := url.Values{}
 	if port != "" {
-		reqURL += "?port=" + url.QueryEscape(port)
+		params.Set("port", port)
+	}
+	if timeout != "" {
+		params.Set("timeout", timeout)
+	}
+	reqURL := baseURL + "/api/tunnel/start"
+	if len(params) > 0 {
+		reqURL += "?" + params.Encode()
 	}
 
 	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
@@ -212,10 +221,11 @@ func showTunnelStatus(client *http.Client, baseURL string) {
 	var result struct {
 		Active  bool `json:"active"`
 		Tunnels []struct {
-			Port  string `json:"port"`
-			URL   string `json:"url"`
-			Token string `json:"token"`
-			Link  string `json:"link"`
+			Port        string `json:"port"`
+			URL         string `json:"url"`
+			Token       string `json:"token"`
+			Link        string `json:"link"`
+			IdleSeconds int    `json:"idle_seconds"`
 		} `json:"tunnels"`
 	}
 	json.Unmarshal(body, &result)
@@ -227,7 +237,19 @@ func showTunnelStatus(client *http.Client, baseURL string) {
 
 	fmt.Printf("\n📡 Active tunnels (%d):\n\n", len(result.Tunnels))
 	for _, t := range result.Tunnels {
-		fmt.Printf("  🔌 Port %s → %s\n", t.Port, t.Link)
+		idle := ""
+		if t.IdleSeconds > 0 {
+			m := t.IdleSeconds / 60
+			s := t.IdleSeconds % 60
+			if m > 0 {
+				idle = fmt.Sprintf(" (⏳ %dm%ds idle remaining)", m, s)
+			} else {
+				idle = fmt.Sprintf(" (⏳ %ds idle remaining)", s)
+			}
+		} else if t.IdleSeconds == 0 {
+			idle = " (∞ never expires)"
+		}
+		fmt.Printf("  🔌 Port %s → %s%s\n", t.Port, t.Link, idle)
 	}
 	fmt.Println()
 }
