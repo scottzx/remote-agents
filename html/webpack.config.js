@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const { merge } = require('webpack-merge');
 const ESLintPlugin = require('eslint-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
@@ -8,6 +9,18 @@ const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 
 const devMode = process.env.NODE_ENV !== 'production';
+
+function getBackendPort() {
+    try {
+        const daemonPath = path.join(process.env.HOME, '.remote-agents', 'daemon.json');
+        const config = JSON.parse(fs.readFileSync(daemonPath, 'utf8'));
+        return config.listen_addr.replace(':', '') || '8080';
+    } catch {
+        return '8080';
+    }
+}
+
+const backendPort = getBackendPort();
 
 const baseConfig = {
     context: path.resolve(__dirname, 'src'),
@@ -92,7 +105,7 @@ const devConfig = {
             {
                 // File system API — proxy to the Go backend
                 context: ['/api'],
-                target: 'http://localhost:8081',
+                target: `http://localhost:${backendPort}`,
                 changeOrigin: true,
             },
         ],
