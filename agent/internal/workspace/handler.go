@@ -316,6 +316,7 @@ func (h *Handler) ListDirectories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pathParam := r.URL.Query().Get("path")
+	pathParam = expandTilde(pathParam)
 	var targetPath string
 
 	if pathParam == "" || pathParam == "~" {
@@ -392,5 +393,20 @@ func (h *Handler) ListDirectories(w http.ResponseWriter, r *http.Request) {
 		"parentPath":  parentPath,
 		"directories": directories,
 	})
+}
+
+// expandTilde expands a ~ prefix to the user's home directory.
+func expandTilde(path string) string {
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(os.PathSeparator)) {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 

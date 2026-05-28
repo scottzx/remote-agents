@@ -23,7 +23,8 @@ type Handler struct {
 // The path is resolved to an absolute path so that all security checks
 // are reliable regardless of the working directory at call time.
 func NewHandler(root string) *Handler {
-	abs, err := filepath.Abs(root)
+	rootExpanded := expandTilde(root)
+	abs, err := filepath.Abs(rootExpanded)
 	if err != nil {
 		log.Fatalf("[fs] cannot resolve root path %q: %v", root, err)
 	}
@@ -33,13 +34,29 @@ func NewHandler(root string) *Handler {
 // SetRoot changes the sandbox root directory at runtime.
 // Returns an error if the path cannot be resolved.
 func (h *Handler) SetRoot(newRoot string) error {
-	abs, err := filepath.Abs(newRoot)
+	rootExpanded := expandTilde(newRoot)
+	abs, err := filepath.Abs(rootExpanded)
 	if err != nil {
 		return err
 	}
 	h.root = abs
 	log.Printf("[fs] root changed to %q", abs)
 	return nil
+}
+
+// expandTilde expands a ~ prefix to the user's home directory.
+func expandTilde(path string) string {
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(os.PathSeparator)) {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 // Root returns the current sandbox root directory.

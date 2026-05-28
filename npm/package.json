@@ -19,7 +19,8 @@
   "license": "MIT",
   "author": "scottzx",
   "bin": {
-    "remote-agents": "run.js"
+    "remote-agents": "run.js",
+    "cc-connect": "cc-run.js"
   },
   "scripts": {
     "postinstall": "node install.js"
@@ -30,6 +31,7 @@
   "files": [
     "install.js",
     "run.js",
+    "cc-run.js",
     "README.md"
   ]
 }

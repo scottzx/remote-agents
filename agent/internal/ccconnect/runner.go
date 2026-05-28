@@ -492,6 +492,21 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 
 	heartbeatSched.Start()
 
+	// Start local Unix socket API server
+	var apiSrv *core.CCConnectCliServer
+	if apiSrvInstance, err := core.NewCCConnectCliServer(cfg.DataDir); err != nil {
+		slog.Error("failed to create cc-connect Unix socket API server", "error", err)
+	} else {
+		apiSrv = apiSrvInstance
+		for i, e := range engines {
+			apiSrv.RegisterEngine(cfg.Projects[i].Name, e)
+		}
+		if cronSched != nil {
+			apiSrv.SetCronScheduler(cronSched)
+		}
+		apiSrv.Start()
+	}
+
 	// Start bridge server
 	var bridgeSrv *core.BridgeServer
 	if cfg.Bridge.Enabled != nil && *cfg.Bridge.Enabled {
@@ -704,6 +719,9 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 	}
 
 	slog.Info("shutting down cc-connect engines...")
+	if apiSrv != nil {
+		apiSrv.Stop()
+	}
 	if mgmtSrv != nil {
 		mgmtSrv.Stop()
 	}

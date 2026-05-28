@@ -19,7 +19,8 @@ type Handler struct {
 
 // NewHandler creates a Handler for the given working directory.
 func NewHandler(root string) *Handler {
-	abs, err := filepath.Abs(root)
+	rootExpanded := expandTilde(root)
+	abs, err := filepath.Abs(rootExpanded)
 	if err != nil {
 		log.Fatalf("[git] cannot resolve root %q: %v", root, err)
 	}
@@ -28,13 +29,29 @@ func NewHandler(root string) *Handler {
 
 // SetRoot changes the working directory at runtime.
 func (h *Handler) SetRoot(newRoot string) error {
-	abs, err := filepath.Abs(newRoot)
+	rootExpanded := expandTilde(newRoot)
+	abs, err := filepath.Abs(rootExpanded)
 	if err != nil {
 		return err
 	}
 	h.root = abs
 	log.Printf("[git] root changed to %q", abs)
 	return nil
+}
+
+// expandTilde expands a ~ prefix to the user's home directory.
+func expandTilde(path string) string {
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(os.PathSeparator)) {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 // --- Data types ---

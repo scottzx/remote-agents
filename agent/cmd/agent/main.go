@@ -89,6 +89,24 @@ func main() {
 	defer cancel()
 
 	// ── 1. Optionally start ttyd supervisor ───────────────────────────────────
+	if !noTtyd {
+		host, portStr, err := net.SplitHostPort(cfg.TtydAddr)
+		if err != nil {
+			host = "127.0.0.1"
+			portStr = "7681"
+		}
+		var basePort int
+		fmt.Sscanf(portStr, "%d", &basePort)
+
+		freePort, err := findAvailablePort(host, basePort)
+		if err != nil {
+			log.Printf("[main] WARNING: Failed to find free port starting from %d: %v. Using default.", basePort, err)
+		} else if freePort != basePort {
+			log.Printf("[main] Port %d is busy. Automatically selected free port %d for internal ttyd.", basePort, freePort)
+			cfg.TtydAddr = net.JoinHostPort(host, fmt.Sprintf("%d", freePort))
+		}
+	}
+
 	sup := supervisor.New(cfg)
 	if noTtyd {
 		log.Println("[main] --no-ttyd: skipping ttyd launch (dev mode, ttyd runs separately)")
@@ -243,4 +261,17 @@ func writeDaemonFile(listenAddr string) {
 	}
 	data, _ := json.MarshalIndent(info, "", "  ")
 	os.WriteFile(filepath.Join(daemonDir, "daemon.json"), data, 0644)
+}
+
+// findAvailablePort finds the first free TCP port starting from basePort.
+func findAvailablePort(ip string, basePort int) (int, error) {
+	for port := basePort; port < basePort+100; port++ {
+		addr := fmt.Sprintf("%s:%d", ip, port)
+		l, err := net.Listen("tcp", addr)
+		if err == nil {
+			l.Close()
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("no available port found in range %d-%d", basePort, basePort+100)
 }
