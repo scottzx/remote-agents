@@ -70,7 +70,7 @@ func NewCCConnectProxy(mgmtPort int) http.Handler {
 // on bridgePort (used by the frontend to establish a direct bridge connection).
 func NewBridgeProxy(bridgePort int) http.Handler {
 	targetURL := &url.URL{
-		Scheme: "ws",
+		Scheme: "http",
 		Host:   fmt.Sprintf("127.0.0.1:%d", bridgePort),
 	}
 
@@ -80,9 +80,6 @@ func NewBridgeProxy(bridgePort int) http.Handler {
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
 		req.Host = targetURL.Host
-		if req.URL.Scheme == "http" {
-			req.URL.Scheme = "ws"
-		}
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
