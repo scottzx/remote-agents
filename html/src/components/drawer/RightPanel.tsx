@@ -49,6 +49,7 @@ interface RightPanelProps {
     onDownloadFile: () => void;
     onRenameFile: () => void;
     onToggleFullscreen: () => void;
+    onShareFile: () => void;
     onSaveFile: () => void;
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
@@ -105,6 +106,7 @@ export function RightPanel({
     onDownloadFile,
     onRenameFile,
     onToggleFullscreen,
+    onShareFile,
     onSaveFile,
     onToggleEditing,
     onEditedContentChange,
@@ -237,6 +239,7 @@ export function RightPanel({
                                 onDownloadFile={onDownloadFile}
                                 onRenameFile={onRenameFile}
                                 onToggleFullscreen={onToggleFullscreen}
+                                onShareFile={onShareFile}
                                 onSaveFile={onSaveFile}
                                 onToggleEditing={onToggleEditing}
                                 onEditedContentChange={onEditedContentChange}

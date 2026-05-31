@@ -64,6 +64,8 @@ interface GitPanelState {
     stagedCollapsed: boolean;
     unstagedCollapsed: boolean;
     untrackedCollapsed: boolean;
+    // ai commit message
+    aiLoading: boolean;
 }
 
 // ── Status label map ───────────────────────────────────────────────────────
@@ -254,6 +256,21 @@ const IconSearch = (
     </svg>
 );
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const IconSparkles = (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <path d="M9.813 15.904L9 21L8.188 15.904L3 15L8.188 14.096L9 9L9.813 14.096L15 15L9.813 15.904Z" />
+        <path d="M19.071 4.929L18.5 8.5L17.929 4.929L14.358 4.358L17.929 3.786L18.5 0.214L19.071 3.786L22.642 4.358L19.071 4.929Z" />
+    </svg>
+);
+
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export class GitPanel extends Component<GitPanelProps, GitPanelState> {
@@ -288,6 +305,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             stagedCollapsed: false,
             unstagedCollapsed: false,
             untrackedCollapsed: false,
+            // AI loading state
+            aiLoading: false,
         };
     }
 
@@ -478,6 +497,24 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         } catch (err) {
             this.setState({ committing: false });
             this.showToast(`提交失败: ${err}`);
+        }
+    };
+
+    generateAICommit = async () => {
+        this.setState({ aiLoading: true });
+        this.showToast('AI 正在深度分析暂存代码中… 🤖');
+        try {
+            const res = await fetch('/api/git/ai-commit', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || '生成失败');
+            }
+            this.setState({ commitMsg: data.message, aiLoading: false });
+            this.showToast('提交说明生成成功 ✨');
+        } catch (err) {
+            this.setState({ aiLoading: false });
+            const errMsg = (err as Error)?.message || String(err);
+            this.showToast(`AI 生成失败: ${errMsg}`);
         }
     };
 
@@ -959,6 +996,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         rows={2}
                     />
                     <div class="git-commit-actions">
+                        <button
+                            class="git-ai-commit-btn"
+                            onClick={this.generateAICommit}
+                            disabled={!hasStaged || this.state.aiLoading}
+                            title="AI 智能生成提交说明 (Claude Code)"
+                        >
+                            {this.state.aiLoading ? <div class="git-spinner" /> : IconSparkles}
+                        </button>
                         <button
                             class="git-commit-btn"
                             onClick={this.commit}

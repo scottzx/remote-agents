@@ -283,6 +283,7 @@ export class App extends Component<{}, AppState> {
         }
 
         this.loadTmuxMouse();
+        this.checkUrlPreview();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
@@ -1139,6 +1140,7 @@ export class App extends Component<{}, AppState> {
                 await this.loadCcConnectUrl();
             }
             this.loadTmuxMouse();
+            this.checkUrlPreview();
         }
     };
 
@@ -1322,6 +1324,42 @@ export class App extends Component<{}, AppState> {
         } catch (err) {
             this.showToast(`重命名失败: ${err}`);
         }
+    };
+
+    shareFile = async () => {
+        const { selectedFsEntry } = this.state;
+        if (!selectedFsEntry) return;
+        const shareUrl = `${window.location.origin}${window.location.pathname}?preview=${encodeURIComponent(
+            selectedFsEntry.path
+        )}`;
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            this.showToast('分享链接已复制到剪贴板 ✓');
+        } catch (_) {
+            this.showToast('复制分享链接失败，请手动复制');
+        }
+    };
+
+    checkUrlPreview = async () => {
+        const params = new URLSearchParams(window.location.search);
+        const previewPath = params.get('preview') || params.get('path') || params.get('file');
+        if (!previewPath) return;
+
+        const name = previewPath.split('/').pop() || previewPath;
+        const entry: FsEntry = {
+            name,
+            path: previewPath,
+            isDir: false,
+            size: 0,
+            modTime: 0,
+        };
+
+        this.setState({
+            activeDrawerTab: 'files',
+            viewMode: 'detail',
+            detailFullscreen: true,
+        });
+        await this.openFileDetail(entry);
     };
 
     render() {
@@ -1693,13 +1731,14 @@ export class App extends Component<{}, AppState> {
                                 this.loadFlatFiles();
                             }}
                             onOpenFileDetail={this.openFileDetail}
-                            onBackToList={() => this.setState({ viewMode: 'list' })}
+                            onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
                             onToggleFavorite={this.toggleFavorite}
                             onCopyContent={this.copyFileContent}
                             onDuplicateFile={this.duplicateFile}
                             onDownloadFile={this.downloadFile}
                             onRenameFile={this.renameFile}
                             onToggleFullscreen={() => this.setState(s => ({ detailFullscreen: !s.detailFullscreen }))}
+                            onShareFile={this.shareFile}
                             onSaveFile={this.saveFile}
                             onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
                             onEditedContentChange={content => this.setState({ editedContent: content })}

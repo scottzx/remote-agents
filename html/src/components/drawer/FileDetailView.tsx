@@ -22,6 +22,7 @@ interface FileDetailViewProps {
     onDownloadFile: () => void;
     onRenameFile: () => void;
     onToggleFullscreen: () => void;
+    onShareFile: () => void;
     onSaveFile: () => void;
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
@@ -46,9 +47,11 @@ export function FileDetailView({
     onDuplicateFile,
     onDownloadFile,
     onRenameFile,
+    onToggleFullscreen,
     onSaveFile,
     onToggleEditing,
     onEditedContentChange,
+    onShareFile,
 }: FileDetailViewProps) {
     const isFav = favoriteFiles.includes(selectedFsEntry.path);
     const tag = getFileTag(selectedFsEntry.name);
@@ -185,6 +188,51 @@ export function FileDetailView({
                         >
                             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                         </svg>
+                    </button>
+                    <button class="fb-icon-btn" onClick={onShareFile} title="分享链接">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="18" cy="5" r="3" />
+                            <circle cx="6" cy="12" r="3" />
+                            <circle cx="18" cy="19" r="3" />
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                    </button>
+                    <button
+                        class={`fb-icon-btn ${detailFullscreen ? 'active' : ''}`}
+                        onClick={onToggleFullscreen}
+                        title={detailFullscreen ? '退出全屏' : '全屏预览'}
+                    >
+                        {detailFullscreen ? (
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
+                            </svg>
+                        ) : (
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                            </svg>
+                        )}
                     </button>
                 </div>
             </div>

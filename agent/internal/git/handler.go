@@ -2,6 +2,7 @@ package git
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chenhg5/cc-connect/config"
 )
 
 // Handler exposes Git operations for a single workdir repository.
@@ -381,6 +384,76 @@ func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
+// AICommit handles POST /api/git/ai-commit
+func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 1. Check if there are staged changes
+	_, err := h.git("diff", "--cached", "--quiet")
+	if err == nil {
+		// Exit code 0 means no changes staged
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"ok": false, "error": "工作区没有已暂存的更改。请先暂存文件，然后再试。"})
+		return
+	}
+
+	// 2. Fetch agent config from CC Connect
+	ccEnv, claudeBin, cliExtraArgs, ccErr := h.getCCConnectAgentEnv()
+	if ccErr != nil {
+		log.Printf("[git/ai-commit] CC Connect config lookup warning: %v, falling back to default claude CLI", ccErr)
+	}
+
+	// 3. Execute Claude Code non-interactively with empty stdin
+	prompt := "Write a concise, conventional git commit message based on the staged changes in this git repository. Output ONLY the raw commit message itself, without quotes, code blocks, or explanations."
+	
+	var args []string
+	if len(cliExtraArgs) > 0 {
+		args = append(args, cliExtraArgs...)
+	}
+	args = append(args, "-p", prompt)
+
+	cmd := exec.Command(claudeBin, args...)
+	cmd.Dir = h.root
+	cmd.Stdin = strings.NewReader("")
+
+	// Filter out CLAUDECODE env var to avoid nesting checks
+	var baseEnv []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "CLAUDECODE=") {
+			baseEnv = append(baseEnv, e)
+		}
+	}
+	
+	// Merge CC Connect environment variables
+	if len(ccEnv) > 0 {
+		cmd.Env = mergeEnvironments(baseEnv, ccEnv)
+	} else {
+		cmd.Env = baseEnv
+	}
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, map[string]any{"ok": false, "error": fmt.Sprintf("AI 生成失败: %s\n%v", string(out), err)})
+		return
+	}
+
+	// 4. Parse the output (trim the "Warning: no stdin..." text if present)
+	outputStr := string(out)
+	warningStr := "Warning: no stdin data received"
+	if idx := strings.Index(outputStr, warningStr); idx >= 0 {
+		if lineEnd := strings.Index(outputStr[idx:], "\n"); lineEnd >= 0 {
+			outputStr = outputStr[idx+lineEnd+1:]
+		}
+	}
+
+	outputStr = strings.TrimSpace(outputStr)
+	writeJSON(w, map[string]any{"ok": true, "message": outputStr})
+}
+
 // --- Internal helpers ---
 
 func (h *Handler) git(args ...string) (string, error) {
@@ -466,3 +539,136 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // Ensure time package import is used (used implicitly via CommitEntry).
 var _ = time.Now
+
+// getCCConnectAgentEnv fetches project agent options and environment variables from ~/.cc-connect/config.toml
+func (h *Handler) getCCConnectAgentEnv() ([]string, string, []string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, "claude", nil, err
+	}
+	configPath := filepath.Join(home, ".cc-connect", "config.toml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, "claude", nil, fmt.Errorf("cc-connect config file not found at %s", configPath)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, "claude", nil, fmt.Errorf("failed to load cc-connect config: %w", err)
+	}
+
+	var matchedProj *config.ProjectConfig
+	for i := range cfg.Projects {
+		proj := &cfg.Projects[i]
+		workDir, _ := proj.Agent.Options["work_dir"].(string)
+		if workDir == "" {
+			continue
+		}
+		projAbs, err := filepath.Abs(expandTilde(workDir))
+		if err != nil {
+			continue
+		}
+		hAbs, err := filepath.Abs(h.root)
+		if err != nil {
+			continue
+		}
+		if projAbs == hAbs {
+			matchedProj = proj
+			break
+		}
+	}
+
+	if matchedProj == nil {
+		return nil, "claude", nil, fmt.Errorf("no matching project found for workspace path %s", h.root)
+	}
+
+	// Extract binary path from agent options
+	cliBin := "claude"
+	var cliExtraArgs []string
+	if cliPath, _ := matchedProj.Agent.Options["cli_path"].(string); cliPath != "" {
+		parts := strings.Fields(cliPath)
+		cliBin = parts[0]
+		if len(parts) > 1 {
+			cliExtraArgs = parts[1:]
+		}
+	} else if path, err := exec.LookPath("claude"); err == nil {
+		cliBin = path
+	} else {
+		localPath := filepath.Join(home, ".local", "bin", "claude")
+		if _, err := os.Stat(localPath); err == nil {
+			cliBin = localPath
+		}
+	}
+
+	// Build the environments list
+	var env []string
+
+	// 1. First, find active provider
+	var activeProvider *config.ProviderConfig
+	if len(matchedProj.Agent.Providers) > 0 {
+		activeProvider = &matchedProj.Agent.Providers[0]
+	} else if len(matchedProj.Agent.ProviderRefs) > 0 {
+		refName := matchedProj.Agent.ProviderRefs[0]
+		for i := range cfg.Providers {
+			if cfg.Providers[i].Name == refName {
+				activeProvider = &cfg.Providers[i]
+				break
+			}
+		}
+	}
+
+	// 2. Add provider specific environments
+	if activeProvider != nil {
+		if activeProvider.BaseURL != "" {
+			env = append(env, "ANTHROPIC_BASE_URL="+activeProvider.BaseURL)
+			if activeProvider.APIKey != "" {
+				env = append(env, "ANTHROPIC_AUTH_TOKEN="+activeProvider.APIKey)
+				env = append(env, "ANTHROPIC_API_KEY=")
+			}
+			if activeProvider.Model != "" {
+				env = append(env, "ANTHROPIC_MODEL="+activeProvider.Model)
+			}
+		} else {
+			if activeProvider.APIKey != "" {
+				env = append(env, "ANTHROPIC_API_KEY="+activeProvider.APIKey)
+			}
+		}
+		for k, v := range activeProvider.Env {
+			env = append(env, k+"="+v)
+		}
+	}
+
+	// 3. Add agent option envs
+	if envMap, ok := matchedProj.Agent.Options["env"].(map[string]string); ok {
+		for k, v := range envMap {
+			env = append(env, k+"="+v)
+		}
+	} else if envMap, ok := matchedProj.Agent.Options["env"].(map[string]any); ok {
+		for k, v := range envMap {
+			if s, ok := v.(string); ok {
+				env = append(env, k+"="+s)
+			}
+		}
+	}
+
+	return env, cliBin, cliExtraArgs, nil
+}
+
+// mergeEnvironments merges override environments into base environment slice, ensuring uniqueness
+func mergeEnvironments(base []string, overrides []string) []string {
+	m := make(map[string]string)
+	for _, entry := range base {
+		if parts := strings.SplitN(entry, "=", 2); len(parts) == 2 {
+			m[parts[0]] = parts[1]
+		}
+	}
+	for _, entry := range overrides {
+		if parts := strings.SplitN(entry, "=", 2); len(parts) == 2 {
+			m[parts[0]] = parts[1]
+		}
+	}
+	var res []string
+	for k, v := range m {
+		res = append(res, k+"="+v)
+	}
+	return res
+}

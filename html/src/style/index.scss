@@ -3721,7 +3721,7 @@ body {
         }
       }
 
-      .git-push-btn, .git-pull-btn {
+      .git-ai-commit-btn, .git-push-btn, .git-pull-btn {
         background-color: var(--bg-card);
         border: 1px solid var(--border-color);
         color: var(--text-main);
@@ -3746,6 +3746,14 @@ body {
           background-color: var(--bg-terminal-inner);
           svg {
             color: var(--text-main);
+          }
+        }
+
+        &.git-ai-commit-btn:hover:not(:disabled) {
+          border-color: var(--accent-color);
+          background-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.08);
+          svg {
+            color: var(--accent-color);
           }
         }
 
