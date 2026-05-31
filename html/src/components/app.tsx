@@ -190,7 +190,7 @@ export class App extends Component<{}, AppState> {
             workspaces: [],
             workspacesLoading: false,
             folders: [],
-            activeWorkspaceId: '',
+            activeWorkspaceId: localStorage.getItem('remote-agents-active-workspace') || '',
             activeSession: null,
             wsModalOpen: false,
             wsModalMode: 'create',
@@ -275,12 +275,15 @@ export class App extends Component<{}, AppState> {
         // Synchronize terminal windows into folders
         this.mergeSessionsIntoFolders(this.state.terminalWindows);
 
-        // Select default workspace if none is active
+        // Select default workspace if none is active, otherwise sync backend root
         const { workspaces, activeWorkspaceId } = this.state;
         if (!activeWorkspaceId && workspaces.length > 0) {
             await this.selectWorkspace(workspaces[0]);
         } else if (activeWorkspaceId) {
-            await this.loadCcConnectUrl();
+            const ws = workspaces.find(w => w.id === activeWorkspaceId);
+            if (ws) {
+                await this.switchWorkspaceContext(ws);
+            }
         }
 
         this.loadTmuxMouse();
@@ -727,9 +730,9 @@ export class App extends Component<{}, AppState> {
         this.loadFlatFiles();
     };
 
-    /** Switch to a session from sidebar click — also activates its workspace. */
     selectSession = async (session: Session) => {
-        const { activeWorkspaceId, workspaces } = this.state;
+        const oldWorkspaceId = this.state.activeWorkspaceId;
+        const { workspaces } = this.state;
 
         // 1. Optimistic UI update: Immediately mark the session as active and expand/set workspace ID
         this.setState(prev => {
@@ -740,10 +743,11 @@ export class App extends Component<{}, AppState> {
                     active: s.index === session.index,
                 })),
             }));
+            localStorage.setItem('remote-agents-active-workspace', session.workspaceId);
             return {
                 activeSession: { ...session, active: true },
                 folders:
-                    session.workspaceId !== activeWorkspaceId
+                    session.workspaceId !== oldWorkspaceId
                         ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
                         : updatedFolders,
                 activeWorkspaceId: session.workspaceId,
@@ -755,7 +759,7 @@ export class App extends Component<{}, AppState> {
             // Always switch the tmux window first
             await this.switchTerminal(session.index);
 
-            if (session.workspaceId !== activeWorkspaceId) {
+            if (session.workspaceId !== oldWorkspaceId) {
                 this.loadCcConnectUrl(session.workspaceId);
                 // Switch backend context and reload file browser / git panel
                 const ws = workspaces.find(w => w.id === session.workspaceId);
@@ -784,6 +788,7 @@ export class App extends Component<{}, AppState> {
 
         this.setState({ activeWorkspaceId: ws.id }, () => {
             this.loadCcConnectUrl(ws.id);
+            localStorage.setItem('remote-agents-active-workspace', ws.id);
         });
 
         // Find an existing window for this workspace, or create one

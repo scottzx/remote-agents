@@ -410,9 +410,11 @@ func (h *Handler) safeAbs(rel string) (string, bool) {
 					} `json:"workspaces"`
 				}
 				if json.Unmarshal(data, &wsCfg) == nil {
+					cleanedLower := strings.ToLower(cleaned)
 					for _, ws := range wsCfg.Workspaces {
 						wsPath := filepath.Clean(ws.Path)
-						if cleaned == wsPath || strings.HasPrefix(cleaned, wsPath+string(os.PathSeparator)) {
+						wsPathLower := strings.ToLower(wsPath)
+						if cleanedLower == wsPathLower || strings.HasPrefix(cleanedLower, wsPathLower+string(os.PathSeparator)) {
 							return cleaned, true
 						}
 					}
