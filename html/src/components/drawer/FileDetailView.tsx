@@ -18,7 +18,6 @@ interface FileDetailViewProps {
     onBackToList: () => void;
     onToggleFavorite: (path: string) => void;
     onCopyContent: () => void;
-    onDuplicateFile: () => void;
     onDownloadFile: () => void;
     onRenameFile: () => void;
     onToggleFullscreen: () => void;
@@ -45,7 +44,6 @@ export function FileDetailView({
     onBackToList,
     onToggleFavorite,
     onCopyContent,
-    onDuplicateFile,
     onDownloadFile,
     onRenameFile,
     onToggleFullscreen,
@@ -154,19 +152,7 @@ export function FileDetailView({
                             <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
                         </svg>
                     </button>
-                    <button class="fb-icon-btn" onClick={onDuplicateFile} title="复制文件">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                            <rect width="8" height="4" x="8" y="2" rx="1" />
-                        </svg>
-                    </button>
+
                     <button class="fb-icon-btn" onClick={onDownloadFile} title="下载">
                         <svg
                             viewBox="0 0 24 24"

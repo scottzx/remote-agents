@@ -89,6 +89,8 @@ const devConfig = {
         static: path.join(__dirname, 'dist'),
         compress: true,
         port: 9000,
+        hot: true,
+        liveReload: true,
         client: {
             overlay: {
                 errors: true,
@@ -109,12 +111,6 @@ const devConfig = {
                 changeOrigin: true,
             },
         ],
-        webSocketServer: {
-            type: 'sockjs',
-            options: {
-                path: '/sockjs-node',
-            },
-        },
     },
     devtool: 'inline-source-map',
 };

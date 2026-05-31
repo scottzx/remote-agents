@@ -985,8 +985,11 @@ export class App extends Component<{}, AppState> {
             // Collapse the drawer
             this.setState({ activeDrawerTab: 'none' });
         } else {
-            // Expand drawer with smart width: wider for channels chat panel
-            const smartWidth = tab === 'channels' ? Math.max(this.state.rightPanelWidth, 450) : 320;
+            // Expand drawer with smart width: wider for channels, git, and files panels
+            const smartWidth =
+                tab === 'channels' || tab === 'git' || tab === 'files'
+                    ? Math.max(this.state.rightPanelWidth, 450)
+                    : 320;
             this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth });
         }
         this.triggerTerminalFit();
@@ -1466,7 +1469,6 @@ export class App extends Component<{}, AppState> {
                         }}
                         onToggleFavorite={this.toggleFavorite}
                         onCopyContent={this.copyFileContent}
-                        onDuplicateFile={this.duplicateFile}
                         onDownloadFile={this.downloadFile}
                         onRenameFile={this.renameFile}
                         onToggleFullscreen={() => {
@@ -1804,7 +1806,6 @@ export class App extends Component<{}, AppState> {
                             onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
                             onToggleFavorite={this.toggleFavorite}
                             onCopyContent={this.copyFileContent}
-                            onDuplicateFile={this.duplicateFile}
                             onDownloadFile={this.downloadFile}
                             onRenameFile={this.renameFile}
                             onToggleFullscreen={() => {

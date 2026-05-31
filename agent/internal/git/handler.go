@@ -461,7 +461,7 @@ func (h *Handler) git(args ...string) (string, error) {
 	cmd.Dir = h.root
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
+	return strings.TrimRight(string(out), "\r\n \t"), err
 }
 
 func (h *Handler) isRepo() bool {

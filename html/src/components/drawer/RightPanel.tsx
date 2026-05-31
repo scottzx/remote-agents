@@ -45,7 +45,6 @@ interface RightPanelProps {
     onBackToList: () => void;
     onToggleFavorite: (path: string) => void;
     onCopyContent: () => void;
-    onDuplicateFile: () => void;
     onDownloadFile: () => void;
     onRenameFile: () => void;
     onToggleFullscreen: () => void;
@@ -102,7 +101,6 @@ export function RightPanel({
     onBackToList,
     onToggleFavorite,
     onCopyContent,
-    onDuplicateFile,
     onDownloadFile,
     onRenameFile,
     onToggleFullscreen,
@@ -235,7 +233,6 @@ export function RightPanel({
                                 onBackToList={onBackToList}
                                 onToggleFavorite={onToggleFavorite}
                                 onCopyContent={onCopyContent}
-                                onDuplicateFile={onDuplicateFile}
                                 onDownloadFile={onDownloadFile}
                                 onRenameFile={onRenameFile}
                                 onToggleFullscreen={onToggleFullscreen}
