@@ -391,10 +391,14 @@ export class App extends Component<{}, AppState> {
 
     /** Create a new workspace via POST /api/workspace/create */
     createWorkspace = async (name: string, path: string, terminalDir?: string, chatChannel?: string) => {
-        const id = name
+        let id = name
             .toLowerCase()
             .replace(/\s+/g, '-')
             .replace(/[^a-z0-9-]/g, '');
+        if (!id) {
+            // Fallback for non-ASCII/Chinese names: generate a clean unique ID
+            id = 'ws-' + Math.random().toString(36).substring(2, 10);
+        }
         const ws: Workspace = {
             id,
             name,
