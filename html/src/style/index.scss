@@ -1329,6 +1329,13 @@ body {
       color: var(--text-main);
     }
 
+    .panel-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .panel-refresh-btn,
     .panel-close-btn {
       display: flex;
       align-items: center;
@@ -1348,6 +1355,10 @@ body {
       svg {
         width: 14px;
         height: 14px;
+      }
+
+      &.spinning svg {
+        animation: fb-spin 1s linear infinite;
       }
     }
   }

@@ -1,7 +1,7 @@
-# 1Agents 🚀
+# 一芥智能体协同系统 (1Agents) 🚀
 
-### 万物归一，一生万物 —— 开源分布式智能体系统与多设备协同网络
-**1Agents (One Agents) is a next-generation open-source decentralized agent platform. It provides a unified workspace (Unified Portal) to manage, orchestrate, and collaborate with heterogeneous AI agents running across many physical or digital devices (macOS, Linux VPS, Windows, and IoT/embedded systems).**
+### 万物归一，一生万物 —— 开源分布式智能体与多设备协同网络
+**一芥智能体 (1Agents)** 是一个开源、去中心化、自托管的 **分布式智能体调度与任务编排工作空间**。它提供了一个**统一门户（Unified Portal）**，用于管理、编排和协同运行在多个物理或数字设备（macOS、Linux VPS、Windows 以及嵌入式/IoT 系统）上的异构 AI 智能体。
 
 **简体中文** | [English](README_EN.md)
 

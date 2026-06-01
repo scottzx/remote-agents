@@ -1803,9 +1803,15 @@ export class App extends Component<{}, AppState> {
                             imageDataUrl={imageDataUrl}
                             onSearchQueryChange={query => this.setState({ searchQuery: query })}
                             onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
-                            onRefreshFlatFiles={() => {
+                            onRefreshFlatFiles={async () => {
                                 this.loadDir('', null);
                                 this.loadFlatFiles();
+                                try {
+                                    await this.checkAccessStatus();
+                                    await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+                                } catch (e) {
+                                    console.error('Failed to reconnect/refresh:', e);
+                                }
                             }}
                             onOpenFileDetail={this.openFileDetail}
                             onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}

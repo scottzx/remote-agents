@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { useState } from 'preact/hooks';
 import { FsEntry, RightDrawerTab } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
@@ -119,6 +120,15 @@ export function RightPanel({
     fsLoading,
     onToggleFsDir,
 }: RightPanelProps) {
+    const [gitLoading, setGitLoading] = useState(false);
+    const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
+
+    let isSpinning = false;
+    if (activeDrawerTab === 'files') {
+        isSpinning = fsLoading || flatFilesLoading;
+    } else if (activeDrawerTab === 'git') {
+        isSpinning = gitLoading;
+    }
     const getDrawerTitle = (tab: RightDrawerTab) => {
         switch (tab) {
             case 'files':
@@ -157,18 +167,39 @@ export function RightPanel({
         >
             <div class="panel-tabs-header">
                 <span class="panel-tab-title">{getDrawerTitle(activeDrawerTab)}</span>
-                <div class="panel-close-btn" onClick={closeDrawer} title="收起面板">
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <line x1="18" x2="6" y1="6" y2="18" />
-                        <line x1="6" x2="18" y1="6" y2="18" />
-                    </svg>
+                <div class="panel-header-actions">
+                    {(activeDrawerTab === 'files' || activeDrawerTab === 'git') && (
+                        <div
+                            class={`panel-refresh-btn ${isSpinning ? 'spinning' : ''}`}
+                            onClick={activeDrawerTab === 'files' ? onRefreshFlatFiles : () => gitRefreshFn?.()}
+                            title={activeDrawerTab === 'files' ? '刷新资源' : '刷新 Git 状态'}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.72 2.78L21 8" />
+                                <polyline points="21 3 21 8 16 8" />
+                            </svg>
+                        </div>
+                    )}
+                    <div class="panel-close-btn" onClick={closeDrawer} title="收起面板">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <line x1="18" x2="6" y1="6" y2="18" />
+                            <line x1="6" x2="18" y1="6" y2="18" />
+                        </svg>
+                    </div>
                 </div>
             </div>
 
@@ -210,7 +241,6 @@ export function RightPanel({
                             favoriteFiles={favoriteFiles}
                             onSearchQueryChange={onSearchQueryChange}
                             onFilterTagChange={onFilterTagChange}
-                            onRefresh={onRefreshFlatFiles}
                             onOpenFileDetail={onOpenFileDetail}
                             fsEntries={fsEntries}
                             fsLoading={fsLoading}
@@ -245,7 +275,12 @@ export function RightPanel({
                     ))}
 
                 {activeDrawerTab === 'git' && (
-                    <GitPanel workdir={activeWorkspacePath} activeWorkspaceId={activeWorkspaceId} />
+                    <GitPanel
+                        workdir={activeWorkspacePath}
+                        activeWorkspaceId={activeWorkspaceId}
+                        onLoadingChange={setGitLoading}
+                        onRegisterRefresh={setGitRefreshFn}
+                    />
                 )}
 
                 {activeDrawerTab === 'settings' && (

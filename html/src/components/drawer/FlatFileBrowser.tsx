@@ -9,7 +9,6 @@ interface FlatFileBrowserProps {
     favoriteFiles: string[];
     onSearchQueryChange: (query: string) => void;
     onFilterTagChange: (tag: 'all' | 'doc' | 'img' | 'code') => void;
-    onRefresh: () => void;
     onOpenFileDetail: (entry: FsEntry) => void;
 
     // Tree system props
@@ -26,7 +25,6 @@ export function FlatFileBrowser({
     favoriteFiles,
     onSearchQueryChange,
     onFilterTagChange,
-    onRefresh,
     onOpenFileDetail,
     fsEntries,
     fsLoading,
@@ -160,20 +158,6 @@ export function FlatFileBrowser({
                         {tag === 'all' ? '全部' : tag === 'doc' ? '文档' : tag === 'img' ? '图片' : '代码'}
                     </button>
                 ))}
-                <button class="fb-tag fb-tag-refresh" onClick={onRefresh} title="刷新文件列表">
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        style="width:12px;height:12px"
-                    >
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                        <path d="M3 3v5h5" />
-                    </svg>
-                </button>
             </div>
             {/* Main Content Area */}
             {isSearching ? (

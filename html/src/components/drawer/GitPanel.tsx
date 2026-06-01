@@ -33,6 +33,8 @@ interface BranchEntry {
 interface GitPanelProps {
     workdir: string;
     activeWorkspaceId: string;
+    onLoadingChange?: (loading: boolean) => void;
+    onRegisterRefresh?: (refreshFn: () => void) => void;
 }
 
 interface GitPanelState {
@@ -311,6 +313,12 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     }
 
     componentDidMount() {
+        if (this.props.onRegisterRefresh) {
+            this.props.onRegisterRefresh(this.refresh);
+        }
+        if (this.props.onLoadingChange) {
+            this.props.onLoadingChange(this.state.loading);
+        }
         this.refresh();
         this._refreshTimer = setInterval(() => {
             this.refresh();
@@ -320,7 +328,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }, 15000);
     }
 
-    componentDidUpdate(prevProps: GitPanelProps) {
+    componentDidUpdate(prevProps: GitPanelProps, prevState: GitPanelState) {
         if (prevProps.activeWorkspaceId !== this.props.activeWorkspaceId) {
             this.setState({
                 logExpanded: false,
@@ -332,10 +340,22 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             });
             this.refresh();
         }
+        if (prevState.loading !== this.state.loading) {
+            this.props.onLoadingChange?.(this.state.loading);
+        }
+        if (prevProps.onRegisterRefresh !== this.props.onRegisterRefresh && this.props.onRegisterRefresh) {
+            this.props.onRegisterRefresh(this.refresh);
+        }
     }
 
     componentWillUnmount() {
         if (this._refreshTimer) clearInterval(this._refreshTimer);
+        if (this.props.onRegisterRefresh) {
+            this.props.onRegisterRefresh(() => {});
+        }
+        if (this.props.onLoadingChange) {
+            this.props.onLoadingChange(false);
+        }
     }
 
     // ── Data fetching ──────────────────────────────────────────────────────
@@ -902,14 +922,6 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 )}
                             </span>
                         )}
-
-                        <button
-                            class={`git-icon-btn ${loading ? 'spinning' : ''}`}
-                            onClick={this.refresh}
-                            title="刷新仓库状态"
-                        >
-                            {IconRefresh}
-                        </button>
                     </div>
 
                     {/* Branch dropdown list */}
