@@ -1,7 +1,9 @@
 # 1Agents 🚀
 
-### 一生万物 —— 开源分布式智能体系统与多设备协同网络
-**1Agents (One Agents) is a next-generation open-source decentralized agent platform. It provides a unified workspace (Unified Portal) to manage, orchestrate, and collaborate with heterogeneous AI agents running across multiple physical or digital devices (macOS, Linux VPS, Windows, and IoT/embedded systems).**
+### 万物归一，一生万物 —— 开源分布式智能体系统与多设备协同网络
+**1Agents (One Agents) is a next-generation open-source decentralized agent platform. It provides a unified workspace (Unified Portal) to manage, orchestrate, and collaborate with heterogeneous AI agents running across many physical or digital devices (macOS, Linux VPS, Windows, and IoT/embedded systems).**
+
+**简体中文** | [English](README_EN.md)
 
 [![NPM Version](https://img.shields.io/npm/v/@scottzx/1agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/1agents)
 [![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/1Agents)
