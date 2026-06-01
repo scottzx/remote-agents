@@ -1,12 +1,45 @@
-# Remote Agents 🚀
+# 1Agents 🚀
 
-随时随地，通过浏览器远程访问你的 AI 智能体和开发工作台。
+### 一生万物 —— 开源分布式智能体系统与多设备协同网络
+**1Agents (One Agents) is a next-generation open-source decentralized agent platform. It provides a unified workspace (Unified Portal) to manage, orchestrate, and collaborate with heterogeneous AI agents running across multiple physical or digital devices (macOS, Linux VPS, Windows, and IoT/embedded systems).**
 
 [![NPM Version](https://img.shields.io/npm/v/@scottzx/1agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/1agents)
 [![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/1Agents)
 [![License](https://img.shields.io/github/license/scottzx/1Agents)](LICENSE)
 
-`Remote Agents` 是一个为现代开发者与 AI 协同设计的**轻量级、安全、免配置的远程 Web 工作台**。无论你是在咖啡馆用平板、在交通工具上用手机，还是在另一台电脑前，只需一个浏览器，就能瞬间连回你的专属开发环境，继续对话、编辑代码、管理文件、执行命令，体验如同亲临现场。
+---
+
+## 🌌 品牌起源与愿景 (Branding & Vision)
+
+> **“一生万物，万物归一” (One is All, All is One)**
+> —— 这就是 **1Agents** 命名的禅意内核。在 AI 浪潮的下一阶段，我们不再需要无数个彼此孤立的对话框，而是需要一个能容纳一切、连接物理与数字世界的统一智能中枢。
+
+我们正处在一个**“AI 将兼容一切”**的拐点。随着系统工具 CLI 化、传统软件 API 化、中间件的快速普及，AI 智能体正在成为连接一切系统与设备的通用适配器。
+
+**1Agents** 绝不仅是一个简单的远程终端，而是一个**开源分布式智能体协同网络**。它致力于打破设备与地域的物理界限，通过一个浏览器（Web 界面），将不同硬件平台（Mac、Linux、Windows 甚至未来的单片机/具身智能设备）上的 Agent 统一管理、无缝调度、接力协同：
+- **💻 Mac 节点**：化身你的“日常办公专家”，深度调用 iCloud 闪电同步、分析系统日志、执行 AppleScript 或快捷指令。
+- **🐧 Linux VPS 节点**：化身你的“后台重负载专家”，24 小时在线提供容器编排、数据库管理及长周期后台任务调度。
+- **🪟 Windows 节点**：化身你的“专业工具人”，通过 RPA 自动化操控复杂的传统桌面专业软件与 Windows 原生环境。
+- **🔌 具身智能/单片机**：在未来，它还将延伸至物理边缘，通过传感器和物理执行器，将智能体带入真实的工作物理现场。
+
+---
+
+## 🧭 项目现状与核心里程碑 (Current Status & Roadmap)
+
+**1Agents** 并非一蹴而就的抽象网络，而是一个脚踏实地的、面向未来的分布式智能体协同系统。
+
+### 1. 我们现在是什么（What We Are Today）
+今天，1Agents 是一个**专为开发者与 AI 协同设计的轻量级、免配置、多端协同 Web 工作台**。它提供了极致响应的零延迟 Web 终端（融合 `ttyd + tmux`）、全功能 Web 文件浏览器（支持 HTML/PDF 高清预览）、原生语音输入以及全自动 SSL 安全通道，能够完美承载并统一管理你本地已有的 AI 智能体（如 Claude Code、Codex CLI、OpenClaw 等）。
+
+### 2. 我们未来去向哪里（Next Major Milestone: 1Agents Distributed Orchestrator）
+我们下一步将重点攻克并实现 **1Agents 分布式任务与资源编排中枢 (Distributed Orchestrator)**。这不仅是一个底层的智能体通讯协议，而是一个真正实现**“用户提要求 -> 中枢做编排 -> 分布式执行 -> 统一验收反馈”**的智能调度工作空间：
+
+- **👤 用户意图输入 (Intent Capture)**：用户只需在 Unified Portal（统一门户网页/App）中提交高阶任务目标或想法。
+- **📋 任务编排 (Task Orchestration)**：编排中枢利用大语言模型（LLM）将复杂目标智能拆解为多步子任务与执行流。
+- **🧩 资源/智能体编排 (Resource/Agent Orchestration)**：编排中枢感知当前网络中所有在线设备（macOS, Linux, Windows, MCU 等）上运行的本地 Agent，并根据其**异构系统原生工具能力**（如 Mac 节点读取本地 iCloud 数据，Linux 节点跑 Docker 容器，Windows 节点控制专业桌面软件 API）进行最优的资源派发。
+- **🛡️ 验收执行与反馈 (Execution, Validation & Synthesis)**：各个异构设备节点在本地执行任务，结果回传至中枢统一验收合成，最终无缝反馈给用户。
+
+而底层的**智能体通讯网络协议 (Agent Protocol Network)**，正是支撑起这一套分布式多端编排与调度的最核心基石。我们将通过这个闭环，真正让“万物归一，一生万物”的 AI 协同在工作现场落地。
 
 ---
 
@@ -17,7 +50,7 @@
   - **终端会话自动持久化**：内置 `tmux` 状态管理，即便意外断网、浏览器刷新，所有终端进程与会话状态均毫秒级还原，绝不断线。
 - 📂 **全功能 Web 文件浏览器 & 编辑器**：
   - **极速浏览**：左侧树形目录 + 核心区平铺视图，支持文件极速检索与类型筛选。
-  - **全能预览**：内置文本、图片浏览器，**新近支持 HTML & PDF 文件的原生高清渲染与 16:9 新窗口/标签页全屏预览**。
+  - **全能预览**：内置文本、图片浏览器，**支持 HTML & PDF 文件的原生高清渲染与 16:9 新窗口/标签页全屏预览**。
   - **在线编辑**：零配置的高亮语法编辑器，支持文件直接重命名、保存与下载。
 - 📁 **动态多工作区管理**：
   - 支持创建、切换与删除多个工作区。
@@ -128,7 +161,7 @@ docker run -d \
 1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
 ```
 
-服务启动后，在本地或局域网浏览器中打开 `http://localhost:8080` (或对应的监听端口) 即可进入您的云端工作台！
+服务启动后，在本地或局域网浏览器中打开 `http://localhost:8080` (或对应的监听端口) 即可进入您的智能体工作台！
 
 ### 完整命令行 flags 参数说明
 
@@ -181,7 +214,7 @@ docker run -d \
 
 ### 3. 免配置公网安全隧道 (Cloudflare Tunnel & cc-connect 智能拉起)
 
-当您在**无公网 IP、无证书配置且处于复杂内网环境**（例如居家宽带、公司内网、咖啡厅 Wi-Fi）中时，`Remote Agents` 提供了最极致的“零配置公网访问”方案。
+当您在**无公网 IP、无证书配置且处于复杂内网环境**（例如居家宽带、公司内网、咖啡厅 Wi-Fi）中时，`1Agents` 提供了最极致的“零配置公网访问”方案。
 
 #### 💡 工作原理与首次下载体验
 当您在启动命令中加上 `-tunnel` 参数，例如：
