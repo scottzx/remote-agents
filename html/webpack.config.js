@@ -51,6 +51,7 @@ const baseConfig = {
         new ESLintPlugin({
             context: path.resolve(__dirname, '.'),
             extensions: ['js', 'jsx', 'ts', 'tsx'],
+            cache: false,
         }),
         new CopyWebpackPlugin({
             patterns: [

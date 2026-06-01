@@ -1809,6 +1809,13 @@ export class App extends Component<{}, AppState> {
                                 try {
                                     await this.checkAccessStatus();
                                     await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+
+                                    const { workspaces, activeWorkspaceId } = this.state;
+                                    if (!activeWorkspaceId && workspaces.length > 0) {
+                                        await this.selectWorkspace(workspaces[0]);
+                                    } else if (activeWorkspaceId) {
+                                        await this.loadCcConnectUrl();
+                                    }
                                 } catch (e) {
                                     console.error('Failed to reconnect/refresh:', e);
                                 }
